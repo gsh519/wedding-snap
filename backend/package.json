@@ -1,0 +1,25 @@
+{
+  "name": "weddingsnap-backend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "deploy": "wrangler deploy",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply wedding-snap-db --local",
+    "db:migrate:prod": "wrangler d1 migrations apply wedding-snap-db --remote",
+    "db:studio": "drizzle-kit studio",
+    "db:push": "drizzle-kit push"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.44.7",
+    "itty-router": "^5.0.18"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "better-sqlite3": "^12.4.6",
+    "drizzle-kit": "^0.31.7",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.90.0"
+  }
+}

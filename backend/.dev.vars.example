@@ -1,0 +1,8 @@
+# ローカル開発用の環境変数
+# 使用する場合は .dev.vars にコピーしてください
+
+# Clerk Authentication (後で設定)
+# CLERK_SECRET_KEY=
+
+# SendGrid (後で設定)
+# SENDGRID_API_KEY=

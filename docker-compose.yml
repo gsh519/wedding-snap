@@ -1,0 +1,38 @@
+version: "3.9"
+
+services:
+  # Next.jsフロントエンド（Docker）
+  frontend:
+    build: ./frontend
+    container_name: weddingsnap-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8787
+      - NODE_ENV=development
+    stdin_open: true
+    tty: true
+
+  # MinIO（R2エミュレーション）
+  r2:
+    image: minio/minio
+    container_name: weddingsnap-r2
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # API
+      - "9001:9001"   # Web Console UI
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - ./r2/data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  r2-data:

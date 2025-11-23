@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.dev.vars
+
+# Next.js
+.next/
+out/
+
+# Wrangler
+.wrangler/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS
+.DS_Store
+*.pem
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# MinIO data
+r2/data/
+
+# Build
+dist/
+build/
+
+# Testing
+coverage/

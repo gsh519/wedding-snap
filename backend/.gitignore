@@ -1,0 +1,20 @@
+# Node modules
+node_modules/
+
+# Wrangler output
+.wrangler/
+dist/
+
+# Environment variables
+.dev.vars
+.env
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

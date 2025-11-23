@@ -1,0 +1,26 @@
+name = "weddingsnap-backend"
+main = "src/index.ts"
+compatibility_date = "2024-11-22"
+
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "wedding-snap-db"
+database_id = "local-db-id"
+migrations_dir = "drizzle/migrations"
+
+# R2 Bucket
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "wedding-snap-media"
+
+# Environment Variables
+[vars]
+ENVIRONMENT = "development"
+
+# CORS設定
+[env.production]
+name = "weddingsnap-backend-production"
+
+[env.production.vars]
+ENVIRONMENT = "production"
