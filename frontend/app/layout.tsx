@@ -14,19 +14,7 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <body className="min-h-screen bg-gray-50">
-        <header className="bg-white shadow-sm">
-          <div className="max-w-7xl mx-auto px-4 py-4">
-            <h1 className="text-2xl font-bold text-primary-600">WeddingSnap</h1>
-          </div>
-        </header>
-        <main className="max-w-7xl mx-auto px-4 py-8">
-          {children}
-        </main>
-        <footer className="bg-white mt-auto border-t">
-          <div className="max-w-7xl mx-auto px-4 py-6 text-center text-gray-500 text-sm">
-            © 2024 WeddingSnap. All rights reserved.
-          </div>
-        </footer>
+        {children}
       </body>
     </html>
   )
