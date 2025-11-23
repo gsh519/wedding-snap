@@ -3,17 +3,48 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 249, 250, 251;
-  --background-end-rgb: 255, 255, 255;
+  /* v6: Pure Happiness（ピュア・ハピネス）⭐ 現在適用中 */
+  /* 印象: 明るい、楽しい、幸福感MAX */
+  /* カラー役割: オレンジをメインカラーに */
+  --brand-primary: 255, 154, 139;      /* #FF9A8B - Sunset Orange */
+  --brand-accent: 255, 179, 217;       /* #FFB3D9 - Pink Cotton Candy */
+  --brand-secondary: 168, 216, 234;    /* #A8D8EA - Sky Blue Pastel */
+
+  --background-primary: 249, 250, 251; /* #F9FAFB - Light Gray（新規登録画面と統一） */
+  --background-card: 255, 255, 255;    /* #FFFFFF - Card White */
+
+  --text-primary: 58, 58, 58;          /* #3A3A3A - Smoky Charcoal */
+  --text-secondary: 119, 120, 123;     /* #77787B - Gray Mist */
+
+  /* 他のバージョンに切り替える場合は、以下の値を使用してください */
+
+  /* v1: Wedding Pure Palette (元のバージョン) */
+  /* --brand-primary: 135, 166, 201;  */ /* #87A6C9 */
+  /* --brand-accent: 244, 198, 211;   */ /* #F4C6D3 */
+  /* --brand-cta: 217, 178, 111;      */ /* #D9B26F */
+
+  /* v2: アクセシビリティ対応版 */
+  /* --brand-primary: 107, 141, 181;  */ /* #6B8DB5 */
+  /* --brand-accent: 232, 168, 189;   */ /* #E8A8BD */
+  /* --brand-cta: 193, 154, 79;       */ /* #C19A4F */
+
+  /* v4: Sweet Celebration */
+  /* --brand-primary: 255, 182, 185;  */ /* #FFB6B9 */
+  /* --brand-accent: 255, 195, 160;   */ /* #FFC3A0 */
+  /* --brand-cta: 183, 110, 121;      */ /* #B76E79 */
+
+  /* v5: Luxury Wedding */
+  /* --brand-primary: 232, 213, 183;  */ /* #E8D5B7 */
+  /* --brand-accent: 244, 201, 208;   */ /* #F4C9D0 */
+  /* --brand-cta: 205, 127, 50;       */ /* #CD7F32 */
+
+  /* v6: Pure Happiness */
+  /* --brand-primary: 168, 216, 234;  */ /* #A8D8EA */
+  /* --brand-accent: 255, 179, 217;   */ /* #FFB3D9 */
+  /* --brand-cta: 255, 154, 139;      */ /* #FF9A8B */
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  color: rgb(var(--text-primary));
+  background: rgb(var(--background-primary));
 }

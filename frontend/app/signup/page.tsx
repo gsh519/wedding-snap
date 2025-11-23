@@ -5,34 +5,34 @@ export default function SignupPage() {
     <div className="flex flex-col items-center justify-center px-6 py-12">
       <div className="w-full max-w-md">
         {/* タイトル */}
-        <h1 className="text-3xl font-bold text-center mb-4">
+        <h1 className="text-3xl font-bold text-center mb-4 text-text-primary">
           結婚式を作成🎉
         </h1>
-        <p className="text-center text-gray-600 mb-10">
+        <p className="text-center text-text-secondary mb-10">
           すぐに完了。
           <br className="sm:hidden" />
           無料でお試しいただけます。
         </p>
 
         {/* メインコンテンツ */}
-        <div className="bg-white rounded-2xl shadow-lg p-6">
+        <div className="bg-background-card rounded-2xl shadow-lg p-6 border border-brand-accent/20">
           {/* 特徴リスト */}
           <div className="space-y-4 mb-6">
             <div className="flex items-start gap-3">
-              <div className="text-gray-400 mt-1 flex-shrink-0">→</div>
-              <p className="text-gray-700">
+              <div className="text-brand-primary mt-1 flex-shrink-0">→</div>
+              <p className="text-text-primary">
                 クレジットカード情報不要で始められます
               </p>
             </div>
             <div className="flex items-start gap-3">
-              <div className="text-gray-400 mt-1 flex-shrink-0">→</div>
-              <p className="text-gray-700">
+              <div className="text-brand-primary mt-1 flex-shrink-0">→</div>
+              <p className="text-text-primary">
                 結婚式の後からでも写真を集められます
               </p>
             </div>
             <div className="flex items-start gap-3">
-              <div className="text-gray-400 mt-1 flex-shrink-0">→</div>
-              <p className="text-gray-700">
+              <div className="text-brand-primary mt-1 flex-shrink-0">→</div>
+              <p className="text-text-primary">
                 すぐに招待リンクを作成できます
               </p>
             </div>
@@ -65,9 +65,9 @@ export default function SignupPage() {
           </Link>
 
           {/* ログインリンク */}
-          <p className="text-center text-sm text-gray-600">
+          <p className="text-center text-sm text-text-secondary">
             アカウントをお持ちの方は{' '}
-            <Link href="/login" className="text-primary-600 font-semibold hover:underline">
+            <Link href="/login" className="text-brand-primary font-semibold hover:underline">
               ログイン
             </Link>
           </p>
