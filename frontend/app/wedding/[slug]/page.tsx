@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import Masonry from 'react-masonry-css'
-import { useState } from 'react'
+import { useState, use } from 'react'
 import TabBar from '@/components/TabBar'
 
 // モックデータ（将来的にAPIから取得）
@@ -17,7 +17,8 @@ const mockPhotos = [
   { id: 8, url: 'https://picsum.photos/seed/wedding8/400/500', width: 400, height: 500 },
 ]
 
-export default function GalleryPage({ params }: { params: { slug: string } }) {
+export default function GalleryPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { slug } = use(params)
   const [isOwner] = useState(true) // 仮: 新郎新婦としてログイン中
   const [selectedPhoto, setSelectedPhoto] = useState<typeof mockPhotos[0] | null>(null)
 
@@ -100,7 +101,7 @@ export default function GalleryPage({ params }: { params: { slug: string } }) {
       </button>
 
       {/* タブバー（新郎新婦のみ） */}
-      {isOwner && <TabBar weddingSlug={params.slug} />}
+      {isOwner && <TabBar weddingSlug={slug} />}
 
       {/* 写真拡大モーダル（タップ時） */}
       {selectedPhoto && (
