@@ -1,4 +1,4 @@
-export default function Home() {
+export default function LandingPage() {
   return (
     <div className="space-y-8">
       <section className="text-center py-12">
@@ -9,9 +9,12 @@ export default function Home() {
           URLを共有するだけで、ゲストから写真・動画を簡単に集められます
         </p>
         <div className="flex gap-4 justify-center">
-          <button className="bg-brand-primary text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition">
+          <a
+            href="/signup"
+            className="bg-brand-primary text-white px-6 py-3 rounded-lg font-semibold hover:opacity-90 transition"
+          >
             無料で始める
-          </button>
+          </a>
           <button className="border-2 border-brand-primary text-brand-primary px-6 py-3 rounded-lg font-semibold hover:bg-brand-primary hover:text-white transition">
             詳細を見る
           </button>
@@ -55,12 +58,12 @@ export default function Home() {
               <li>✓ 広告表示あり</li>
             </ul>
           </div>
-          <div className="border-2 border-brand-cta p-6 rounded-lg bg-brand-accent/10 relative overflow-hidden">
-            <div className="absolute top-0 right-0 bg-brand-cta text-white text-xs font-bold px-3 py-1 rounded-bl-lg">
+          <div className="bg-gradient-to-r from-orange-50 to-pink-50 p-6 rounded-lg shadow-sm border border-brand-accent/20 relative overflow-hidden">
+            <div className="absolute top-0 right-0 bg-brand-primary text-white text-xs font-bold px-3 py-1 rounded-bl-lg">
               おすすめ
             </div>
             <h4 className="text-xl font-bold mb-2 text-text-primary">有料プラン</h4>
-            <p className="text-3xl font-bold text-brand-cta mb-4">¥800</p>
+            <p className="text-3xl font-bold text-brand-primary mb-4">¥800</p>
             <ul className="space-y-2 text-text-secondary">
               <li>✓ 容量: 10GB</li>
               <li>✓ 保存期間: 30日</li>
