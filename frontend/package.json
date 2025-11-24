@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "pages:build": "npx @opennextjs/cloudflare",
+    "pages:build": "npx @opennextjs/cloudflare build",
     "pages:dev": "npm run pages:build && wrangler pages dev .open-next/worker",
     "pages:deploy": "npm run pages:build && wrangler pages deploy .open-next/worker"
   },
