@@ -4,6 +4,7 @@ import Link from 'next/link'
 import Masonry from 'react-masonry-css'
 import { useState, use } from 'react'
 import TabBar from '@/components/TabBar'
+import UploadBottomSheet from '@/components/UploadBottomSheet'
 
 // モックデータ（将来的にAPIから取得）
 const mockPhotos = [
@@ -21,12 +22,35 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
   const { slug } = use(params)
   const [isOwner] = useState(true) // 仮: 新郎新婦としてログイン中
   const [selectedPhoto, setSelectedPhoto] = useState<typeof mockPhotos[0] | null>(null)
+  const [isUploadSheetOpen, setIsUploadSheetOpen] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
 
   // Masonryのブレークポイント設定
   const breakpointColumns = {
     default: 4, // PC: 4カラム
     1024: 3,    // タブレット: 3カラム
     640: 2,     // スマホ: 2カラム
+  }
+
+  // アップロード処理（仮実装）
+  const handleUpload = async (files: File[], uploaderName: string) => {
+    console.log('Uploading files:', files.length, 'by', uploaderName)
+    setIsUploading(true)
+    setUploadProgress(0)
+    setIsUploadSheetOpen(false) // ボトムシートを閉じる
+
+    try {
+      // TODO: Phase 2でAPI連携を実装
+      // 仮の進捗シミュレーション
+      for (let i = 0; i <= 100; i += 10) {
+        setUploadProgress(i)
+        await new Promise(resolve => setTimeout(resolve, 200))
+      }
+    } finally {
+      setIsUploading(false)
+      setUploadProgress(0)
+    }
   }
 
   return (
@@ -68,6 +92,22 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
         </div>
       </header>
 
+      {/* 進捗バー（アップロード中のみ表示） */}
+      {isUploading && (
+        <div className="sticky top-16 z-30 bg-white border-b border-gray-200 px-4 py-3 shadow-md">
+          <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
+            <span className="font-medium">アップロード中...</span>
+            <span className="font-semibold">{uploadProgress}%</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+            <div
+              className="bg-brand-primary h-full transition-all duration-300"
+              style={{ width: `${uploadProgress}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* 写真グリッド */}
       <div className="px-2 py-4">
         <Masonry
@@ -94,7 +134,10 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
       </div>
 
       {/* FAB（アップロードボタン） */}
-      <button className="fixed bottom-24 right-6 bg-brand-primary text-white rounded-full p-4 shadow-lg hover:bg-brand-secondary transition-colors z-20">
+      <button
+        onClick={() => setIsUploadSheetOpen(true)}
+        className="fixed bottom-24 right-6 bg-brand-primary text-white rounded-full p-4 shadow-lg hover:bg-brand-secondary transition-colors z-20"
+      >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
         </svg>
@@ -127,6 +170,13 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
           </div>
         </div>
       )}
+
+      {/* アップロードボトムシート */}
+      <UploadBottomSheet
+        isOpen={isUploadSheetOpen}
+        onClose={() => setIsUploadSheetOpen(false)}
+        onUpload={handleUpload}
+      />
     </div>
   )
 }

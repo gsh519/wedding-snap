@@ -142,6 +142,11 @@ docker-compose up -d --build
 ```bash
 cd backend
 
+# DB Studio 起動
+npm run db:studio
+
+lsof -i :4983
+
 # ローカルD1でクエリ実行
 npx wrangler d1 execute wedding-snap-db --local --command="SELECT * FROM events"
 
