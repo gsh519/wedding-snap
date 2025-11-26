@@ -5,6 +5,7 @@ import Masonry from 'react-masonry-css'
 import { useState, use } from 'react'
 import TabBar from '@/components/TabBar'
 import UploadBottomSheet from '@/components/UploadBottomSheet'
+import NotificationBanner from '@/components/NotificationBanner'
 
 // モックデータ（将来的にAPIから取得）
 const mockPhotos = [
@@ -25,6 +26,18 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
   const [isUploadSheetOpen, setIsUploadSheetOpen] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadMessage, setUploadMessage] = useState('アップロード中...')
+
+  // 通知バナー用の state
+  const [notification, setNotification] = useState<{
+    message: string
+    type: 'success' | 'warning' | 'error'
+    isVisible: boolean
+  }>({
+    message: '',
+    type: 'success',
+    isVisible: false,
+  })
 
   // Masonryのブレークポイント設定
   const breakpointColumns = {
@@ -33,23 +46,119 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
     640: 2,     // スマホ: 2カラム
   }
 
-  // アップロード処理（仮実装）
+  // 1ファイルをアップロードする関数
+  const uploadSingleFile = async (file: File, uploaderName: string): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('uploaderName', uploaderName)
+      formData.append('fileName', file.name)
+      formData.append('mimeType', file.type)
+      formData.append('fileSize', file.size.toString())
+
+      const response = await fetch(`http://localhost:8787/api/albums/${slug}/media/upload`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        return { success: false, error: errorData.error || 'アップロードに失敗しました' }
+      }
+
+      return { success: true }
+    } catch (error) {
+      console.error('Upload error:', error)
+      return { success: false, error: 'ネットワークエラーが発生しました' }
+    }
+  }
+
+  // アップロード処理（10ファイル並列）
   const handleUpload = async (files: File[], uploaderName: string) => {
     console.log('Uploading files:', files.length, 'by', uploaderName)
-    setIsUploading(true)
-    setUploadProgress(0)
+
     setIsUploadSheetOpen(false) // ボトムシートを閉じる
 
+    // 少し待ってから進捗バーを表示（ボトムシートのアニメーション完了後）
+    await new Promise(resolve => setTimeout(resolve, 300))
+
+    setIsUploading(true)
+    setUploadProgress(0)
+    setUploadMessage('アップロード中...')
+
+    const totalFiles = files.length
+    let completedFiles = 0
+    const errors: string[] = []
+
+    // 進捗更新用のヘルパー関数
+    const updateProgress = () => {
+      const progress = Math.floor((completedFiles / totalFiles) * 100)
+      setUploadProgress(progress)
+      setUploadMessage(`アップロード中... ${completedFiles}/${totalFiles}件`)
+    }
+
     try {
-      // TODO: Phase 2でAPI連携を実装
-      // 仮の進捗シミュレーション
-      for (let i = 0; i <= 100; i += 10) {
-        setUploadProgress(i)
-        await new Promise(resolve => setTimeout(resolve, 200))
+      // 10ファイルずつ並列アップロード
+      const BATCH_SIZE = 10
+      for (let i = 0; i < totalFiles; i += BATCH_SIZE) {
+        const batch = files.slice(i, i + BATCH_SIZE)
+
+        // 各ファイルのアップロードをPromiseにラップして、完了時に進捗を更新
+        const uploadPromises = batch.map(async (file) => {
+          const result = await uploadSingleFile(file, uploaderName)
+
+          // アップロード完了したら即座に進捗を更新
+          if (result.success) {
+            completedFiles++
+          } else {
+            errors.push(`${file.name}: ${result.error}`)
+          }
+          updateProgress()
+
+          return result
+        })
+
+        await Promise.all(uploadPromises)
       }
-    } finally {
+
+      // 進捗バーを非表示にする
       setIsUploading(false)
       setUploadProgress(0)
+
+      // 完了メッセージを通知バナーに表示
+      if (errors.length === 0) {
+        // 全て成功
+        setNotification({
+          message: `${completedFiles}件のアップロードが完了しました`,
+          type: 'success',
+          isVisible: true,
+        })
+      } else if (completedFiles > 0) {
+        // 一部成功、一部失敗
+        const firstError = errors[0] // 最初のエラーを表示
+        setNotification({
+          message: `${completedFiles}/${totalFiles}件のアップロードが完了しました。エラー: ${firstError}`,
+          type: 'warning',
+          isVisible: true,
+        })
+      } else {
+        // 全て失敗
+        const firstError = errors[0] // 最初のエラーを表示
+        setNotification({
+          message: `アップロードに失敗しました。エラー: ${firstError}`,
+          type: 'error',
+          isVisible: true,
+        })
+      }
+    } catch (error) {
+      console.error('Upload error:', error)
+      setIsUploading(false)
+      setUploadProgress(0)
+      setNotification({
+        message: 'アップロード中に予期しないエラーが発生しました',
+        type: 'error',
+        isVisible: true,
+      })
     }
   }
 
@@ -92,11 +201,21 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
         </div>
       </header>
 
+      {/* 通知バナー（進捗バーが非表示のときのみ表示） */}
+      {!isUploading && (
+        <NotificationBanner
+          message={notification.message}
+          type={notification.type}
+          isVisible={notification.isVisible}
+          onClose={() => setNotification({ ...notification, isVisible: false })}
+        />
+      )}
+
       {/* 進捗バー（アップロード中のみ表示） */}
       {isUploading && (
         <div className="sticky top-16 z-30 bg-white border-b border-gray-200 px-4 py-3 shadow-md">
           <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
-            <span className="font-medium">アップロード中...</span>
+            <span className="font-medium">{uploadMessage}</span>
             <span className="font-semibold">{uploadProgress}%</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">

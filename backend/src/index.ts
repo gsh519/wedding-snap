@@ -1,4 +1,13 @@
 import { Router, error, json } from 'itty-router'
+import { eq } from 'drizzle-orm'
+import { getDb } from './db/client'
+import { albums, medias } from './db/schema'
+import {
+  checkStorageLimit,
+  checkAlbumExpiration,
+  validateMimeType,
+  validateFileSize,
+} from './utils/validation'
 
 // 型定義
 export interface Env {
@@ -103,42 +112,112 @@ router.post('/api/events', async (request, env: Env) => {
   }
 })
 
-// メディアアップロード準備（プリサインドURL生成の代わり）
-router.post('/api/events/:id/media', async (request, env: Env) => {
-  const { id: eventId } = request.params
+// メディアアップロード（slug経由）
+router.post('/api/albums/:slug/media/upload', async (request, env: Env) => {
+  const { slug } = request.params
 
   try {
-    const body = await request.json() as {
-      fileName: string
-      fileSize: number
-      fileType: string
+    const db = getDb(env.DB)
+
+    // slugからアルバム取得
+    const albumResult = await db
+      .select()
+      .from(albums)
+      .where(eq(albums.slug, slug))
+      .limit(1)
+
+    const album = albumResult[0]
+    if (!album) {
+      return json(
+        { error: 'アルバムが見つかりません' },
+        { status: 404, headers: corsHeaders }
+      )
     }
 
-    // イベント存在確認
-    const event = await env.DB.prepare(
-      'SELECT storage_used, storage_limit FROM events WHERE id = ? AND deleted_at IS NULL'
-    ).bind(eventId).first() as { storage_used: number; storage_limit: number } | null
-
-    if (!event) {
-      return error(404, 'Event not found')
+    // 有効期限チェック
+    const expirationCheck = checkAlbumExpiration(album)
+    if (!expirationCheck.isValid) {
+      return json(
+        { error: expirationCheck.message },
+        { status: 400, headers: corsHeaders }
+      )
     }
 
-    // 容量チェック
-    if (event.storage_used + body.fileSize > event.storage_limit) {
-      return error(400, 'Storage limit exceeded')
+    // multipart/form-dataをパース
+    const formData = await request.formData()
+    const file = formData.get('file') as File | null
+    const uploaderName = formData.get('uploaderName') as string | null
+    const fileName = formData.get('fileName') as string | null
+    const mimeType = formData.get('mimeType') as string | null
+    const fileSize = parseInt(formData.get('fileSize') as string || '0')
+
+    if (!file || !fileName || !mimeType) {
+      return json(
+        { error: '必須フィールドが不足しています' },
+        { status: 400, headers: corsHeaders }
+      )
     }
 
+    // MIME typeバリデーション
+    const mimeCheck = validateMimeType(mimeType)
+    if (!mimeCheck.isValid) {
+      return json({ error: mimeCheck.message }, { status: 400, headers: corsHeaders })
+    }
+
+    // ファイルサイズバリデーション
+    const sizeCheck = validateFileSize(mimeType, fileSize)
+    if (!sizeCheck.isValid) {
+      return json({ error: sizeCheck.message }, { status: 400, headers: corsHeaders })
+    }
+
+    // 容量制限チェック
+    const storageCheck = checkStorageLimit(album, fileSize)
+    if (!storageCheck.canUpload) {
+      return json({ error: storageCheck.message }, { status: 400, headers: corsHeaders })
+    }
+
+    // メディアIDを生成
     const mediaId = crypto.randomUUID()
-    const r2Key = `events/${eventId}/${mediaId}/${body.fileName}`
+    const r2Key = `albums/${album.id}/${mediaId}/${fileName}`
 
-    return json({
-      mediaId,
-      uploadUrl: `/api/events/${eventId}/media/${mediaId}/upload`,
-      r2Key
-    }, { headers: corsHeaders })
+    // R2にファイルをアップロード
+    const fileArrayBuffer = await file.arrayBuffer()
+    await env.BUCKET.put(r2Key, fileArrayBuffer, {
+      httpMetadata: {
+        contentType: mimeType,
+      },
+    })
+
+    // D1にメタデータを保存
+    await db.insert(medias).values({
+      albumId: album.id,
+      uploadUserName: uploaderName || null,
+      r2Key,
+      fileName,
+      mimeType,
+      fileSize,
+    })
+
+    // アルバムの容量使用量を更新
+    await db
+      .update(albums)
+      .set({ storageUsed: album.storageUsed + fileSize })
+      .where(eq(albums.id, album.id))
+
+    return json(
+      {
+        success: true,
+        mediaId,
+        message: 'アップロードが完了しました',
+      },
+      { status: 201, headers: corsHeaders }
+    )
   } catch (e) {
-    console.error('Error preparing media upload:', e)
-    return error(500, 'Internal Server Error')
+    console.error('Error uploading media:', e)
+    return json(
+      { error: 'アップロードに失敗しました' },
+      { status: 500, headers: corsHeaders }
+    )
   }
 })
 
