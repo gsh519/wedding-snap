@@ -130,6 +130,7 @@ router.post('/api/albums/:slug/media/upload', async (request, env: Env) => {
     if (!album) {
       return json(
         { error: 'アルバムが見つかりません' },
+        // TODO: 文言変更
         { status: 404, headers: corsHeaders }
       )
     }
@@ -139,6 +140,7 @@ router.post('/api/albums/:slug/media/upload', async (request, env: Env) => {
     if (!expirationCheck.isValid) {
       return json(
         { error: expirationCheck.message },
+        // TODO: 有効期限切れの文言を表示する。エラーページに遷移
         { status: 400, headers: corsHeaders }
       )
     }
@@ -153,6 +155,7 @@ router.post('/api/albums/:slug/media/upload', async (request, env: Env) => {
 
     if (!file || !fileName || !mimeType) {
       return json(
+        // TODO: アップロードに失敗しました。
         { error: '必須フィールドが不足しています' },
         { status: 400, headers: corsHeaders }
       )
@@ -173,6 +176,7 @@ router.post('/api/albums/:slug/media/upload', async (request, env: Env) => {
     // 容量制限チェック
     const storageCheck = checkStorageLimit(album, fileSize)
     if (!storageCheck.canUpload) {
+      // TODO: ここで引っかかると以降の処理を終了させる
       return json({ error: storageCheck.message }, { status: 400, headers: corsHeaders })
     }
 
