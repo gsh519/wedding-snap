@@ -1,5 +1,5 @@
 import { Router, error, json } from 'itty-router'
-import { eq } from 'drizzle-orm'
+import { eq, gt } from 'drizzle-orm'
 import { getDb } from './db/client'
 import { albums, medias } from './db/schema'
 import {
@@ -109,6 +109,157 @@ router.post('/api/events', async (request, env: Env) => {
   } catch (e) {
     console.error('Error creating event:', e)
     return error(500, 'Internal Server Error')
+  }
+})
+
+// メディア一覧取得（slug経由・ページネーション対応）
+router.get('/api/albums/:slug/media', async (request, env: Env) => {
+  const { slug } = request.params
+
+  try {
+    const db = getDb(env.DB)
+    const url = new URL(request.url)
+    const cursor = url.searchParams.get('cursor')
+    const limit = parseInt(url.searchParams.get('limit') || '30')
+
+    // slugからアルバム取得
+    const albumResult = await db
+      .select()
+      .from(albums)
+      .where(eq(albums.slug, slug))
+      .limit(1)
+
+    const album = albumResult[0]
+    if (!album) {
+      return json(
+        { error: 'アルバムが見つかりません' },
+        { status: 404, headers: corsHeaders }
+      )
+    }
+
+    // 有効期限チェック
+    const expirationCheck = checkAlbumExpiration(album)
+    if (!expirationCheck.isValid) {
+      return json(
+        { error: expirationCheck.message },
+        { status: 404, headers: corsHeaders }
+      )
+    }
+
+    // メディア一覧取得（カーソルベースページネーション）
+    let query = db
+      .select()
+      .from(medias)
+      .where(eq(medias.albumId, album.id))
+      .orderBy(medias.id)
+      .$dynamic()
+
+    // カーソルがある場合は、そのID以降を取得
+    if (cursor) {
+      const cursorId = parseInt(cursor)
+      if (!isNaN(cursorId)) {
+        query = query.where(gt(medias.id, cursorId))
+      }
+    }
+
+    // limit+1件取得して、hasNextPageを判定
+    const mediaList = await query.limit(limit + 1)
+
+    const hasNextPage = mediaList.length > limit
+    const mediaToReturn = hasNextPage ? mediaList.slice(0, limit) : mediaList
+
+    // レスポンス用にURLを追加
+    const mediaWithUrls = mediaToReturn.map((media) => ({
+      id: media.id,
+      albumId: media.albumId,
+      uploadUserName: media.uploadUserName,
+      fileName: media.fileName,
+      mimeType: media.mimeType,
+      fileSize: media.fileSize,
+      url: `/api/albums/${slug}/media/${media.id}/file`,
+      createdAt: media.createdAt,
+    }))
+
+    const nextCursor = hasNextPage ? mediaToReturn[mediaToReturn.length - 1].id.toString() : null
+
+    return json(
+      {
+        media: mediaWithUrls,
+        pagination: {
+          nextCursor,
+          hasNextPage,
+        },
+      },
+      { headers: corsHeaders }
+    )
+  } catch (e) {
+    console.error('Error fetching media:', e)
+    return json(
+      { error: 'メディアの取得に失敗しました' },
+      { status: 500, headers: corsHeaders }
+    )
+  }
+})
+
+// メディアファイル配信（R2プロキシ）
+router.get('/api/albums/:slug/media/:mediaId/file', async (request, env: Env) => {
+  const { slug, mediaId } = request.params
+
+  try {
+    const db = getDb(env.DB)
+
+    // slugからアルバム取得
+    const albumResult = await db
+      .select()
+      .from(albums)
+      .where(eq(albums.slug, slug))
+      .limit(1)
+
+    const album = albumResult[0]
+    if (!album) {
+      return new Response('アルバムが見つかりません', { status: 404, headers: corsHeaders })
+    }
+
+    // 有効期限チェック
+    const expirationCheck = checkAlbumExpiration(album)
+    if (!expirationCheck.isValid) {
+      return new Response('このアルバムは有効期限が切れています', { status: 404, headers: corsHeaders })
+    }
+
+    // メディア取得
+    const mediaIdNum = parseInt(mediaId)
+    if (isNaN(mediaIdNum)) {
+      return new Response('無効なメディアIDです', { status: 404, headers: corsHeaders })
+    }
+
+    const mediaResult = await db
+      .select()
+      .from(medias)
+      .where(eq(medias.id, mediaIdNum))
+      .limit(1)
+
+    const media = mediaResult[0]
+    if (!media || media.albumId !== album.id || media.deletedAt) {
+      return new Response('メディアが見つかりません', { status: 404, headers: corsHeaders })
+    }
+
+    // R2からファイル取得
+    const object = await env.BUCKET.get(media.r2Key)
+    if (!object) {
+      return new Response('ファイルが見つかりません', { status: 404, headers: corsHeaders })
+    }
+
+    // ファイルを返却
+    const headers = {
+      ...corsHeaders,
+      'Content-Type': media.mimeType,
+      'Cache-Control': 'public, max-age=31536000, immutable',
+    }
+
+    return new Response(object.body, { headers })
+  } catch (e) {
+    console.error('Error serving media file:', e)
+    return new Response('ファイルの取得に失敗しました', { status: 500, headers: corsHeaders })
   }
 })
 

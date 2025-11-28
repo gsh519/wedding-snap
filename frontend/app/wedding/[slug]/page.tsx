@@ -2,31 +2,46 @@
 
 import Link from 'next/link'
 import Masonry from 'react-masonry-css'
-import { useState, use } from 'react'
+import { useState, use, useEffect, useRef } from 'react'
+import { notFound } from 'next/navigation'
+import { useSwipeable } from 'react-swipeable'
 import TabBar from '@/components/TabBar'
 import UploadBottomSheet from '@/components/UploadBottomSheet'
 import NotificationBanner from '@/components/NotificationBanner'
 
-// モックデータ（将来的にAPIから取得）
-const mockPhotos = [
-  { id: 1, url: 'https://picsum.photos/seed/wedding1/400/600', width: 400, height: 600 },
-  { id: 2, url: 'https://picsum.photos/seed/wedding2/400/300', width: 400, height: 300 },
-  { id: 3, url: 'https://picsum.photos/seed/wedding3/400/500', width: 400, height: 500 },
-  { id: 4, url: 'https://picsum.photos/seed/wedding4/400/450', width: 400, height: 450 },
-  { id: 5, url: 'https://picsum.photos/seed/wedding5/400/550', width: 400, height: 550 },
-  { id: 6, url: 'https://picsum.photos/seed/wedding6/400/400', width: 400, height: 400 },
-  { id: 7, url: 'https://picsum.photos/seed/wedding7/400/350', width: 400, height: 350 },
-  { id: 8, url: 'https://picsum.photos/seed/wedding8/400/500', width: 400, height: 500 },
-]
+// 型定義
+type MediaItem = {
+  id: number
+  albumId: string
+  uploadUserName: string | null
+  fileName: string
+  mimeType: string
+  fileSize: number
+  url: string
+  createdAt: string
+}
 
 export default function GalleryPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params)
   const [isOwner] = useState(true) // 仮: 新郎新婦としてログイン中
-  const [selectedPhoto, setSelectedPhoto] = useState<typeof mockPhotos[0] | null>(null)
+
+  // メディア関連のstate
+  const [media, setMedia] = useState<MediaItem[]>([])
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [hasNextPage, setHasNextPage] = useState(false)
+  const [isLoadingMedia, setIsLoadingMedia] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [mediaError, setMediaError] = useState<string | null>(null)
+
+  const [selectedPhoto, setSelectedPhoto] = useState<MediaItem | null>(null)
+  const [selectedPhotoIndex, setSelectedPhotoIndex] = useState<number>(-1)
   const [isUploadSheetOpen, setIsUploadSheetOpen] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [uploadMessage, setUploadMessage] = useState('アップロード中...')
+
+  // 無限スクロール用のref
+  const observerTarget = useRef<HTMLDivElement>(null)
 
   // 通知バナー用の state
   const [notification, setNotification] = useState<{
@@ -45,6 +60,110 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
     1024: 3,    // タブレット: 3カラム
     640: 2,     // スマホ: 2カラム
   }
+
+  // メディア一覧を取得する関数
+  const fetchMedia = async (cursor: string | null = null) => {
+    try {
+      const params = new URLSearchParams()
+      if (cursor) {
+        params.append('cursor', cursor)
+      }
+      params.append('limit', '30')
+
+      const response = await fetch(
+        `http://localhost:8787/api/albums/${slug}/media?${params.toString()}`
+      )
+
+      if (response.status === 404) {
+        notFound()
+      }
+
+      if (!response.ok) {
+        throw new Error('メディアの取得に失敗しました')
+      }
+
+      const data = await response.json()
+      return {
+        media: data.media as MediaItem[],
+        nextCursor: data.pagination.nextCursor as string | null,
+        hasNextPage: data.pagination.hasNextPage as boolean,
+      }
+    } catch (error) {
+      if (error instanceof Error && error.message === 'NEXT_NOT_FOUND') {
+        throw error
+      }
+      console.error('Error fetching media:', error)
+      throw new Error('メディアの読み込みに失敗しました')
+    }
+  }
+
+  // 初回読み込み
+  useEffect(() => {
+    const loadInitialMedia = async () => {
+      try {
+        setIsLoadingMedia(true)
+        setMediaError(null)
+        const result = await fetchMedia()
+        setMedia(result.media)
+        setNextCursor(result.nextCursor)
+        setHasNextPage(result.hasNextPage)
+      } catch (error) {
+        if (error instanceof Error && error.message === 'NEXT_NOT_FOUND') {
+          throw error
+        }
+        setMediaError(error instanceof Error ? error.message : 'エラーが発生しました')
+      } finally {
+        setIsLoadingMedia(false)
+      }
+    }
+
+    loadInitialMedia()
+  }, [slug])
+
+  // 次ページを読み込む関数
+  const loadMoreMedia = async () => {
+    if (!hasNextPage || isLoadingMore || !nextCursor) return
+
+    try {
+      setIsLoadingMore(true)
+      const result = await fetchMedia(nextCursor)
+      setMedia((prev) => [...prev, ...result.media])
+      setNextCursor(result.nextCursor)
+      setHasNextPage(result.hasNextPage)
+    } catch (error) {
+      console.error('Error loading more media:', error)
+      setNotification({
+        message: '追加の読み込みに失敗しました',
+        type: 'error',
+        isVisible: true,
+      })
+    } finally {
+      setIsLoadingMore(false)
+    }
+  }
+
+  // 無限スクロールの設定
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isLoadingMore) {
+          loadMoreMedia()
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    const currentTarget = observerTarget.current
+    if (currentTarget) {
+      observer.observe(currentTarget)
+    }
+
+    return () => {
+      if (currentTarget) {
+        observer.unobserve(currentTarget)
+      }
+    }
+  }, [hasNextPage, isLoadingMore, nextCursor])
 
   // 1ファイルをアップロードする関数
   const uploadSingleFile = async (file: File, uploaderName: string): Promise<{ success: boolean; error?: string }> => {
@@ -133,6 +252,11 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
           type: 'success',
           isVisible: true,
         })
+        // メディア一覧を再読み込み
+        const result = await fetchMedia()
+        setMedia(result.media)
+        setNextCursor(result.nextCursor)
+        setHasNextPage(result.hasNextPage)
       } else if (completedFiles > 0) {
         // 一部成功、一部失敗
         const firstError = errors[0] // 最初のエラーを表示
@@ -141,6 +265,11 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
           type: 'warning',
           isVisible: true,
         })
+        // 一部成功した場合もメディア一覧を再読み込み
+        const result = await fetchMedia()
+        setMedia(result.media)
+        setNextCursor(result.nextCursor)
+        setHasNextPage(result.hasNextPage)
       } else {
         // 全て失敗
         const firstError = errors[0] // 最初のエラーを表示
@@ -229,27 +358,79 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
 
       {/* 写真グリッド */}
       <div className="px-2 py-4">
-        <Masonry
-          breakpointCols={breakpointColumns}
-          className="flex -ml-2 w-auto"
-          columnClassName="pl-2 bg-clip-padding"
-        >
-          {mockPhotos.map((photo) => (
-            <div
-              key={photo.id}
-              className="mb-2 cursor-pointer group relative overflow-hidden rounded-lg"
-              onClick={() => setSelectedPhoto(photo)}
-            >
-              <img
-                src={photo.url}
-                alt={`Photo ${photo.id}`}
-                className="w-full h-auto block transition-transform group-hover:scale-105"
-              />
-              {/* ホバー時のオーバーレイ */}
-              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity" />
+        {isLoadingMedia ? (
+          <div className="flex justify-center items-center py-20">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-brand-primary mx-auto mb-4"></div>
+              <p className="text-text-secondary">読み込み中...</p>
             </div>
-          ))}
-        </Masonry>
+          </div>
+        ) : mediaError ? (
+          <div className="flex justify-center items-center py-20">
+            <div className="text-center">
+              <p className="text-red-500 mb-4">{mediaError}</p>
+              <button
+                onClick={() => window.location.reload()}
+                className="bg-brand-primary text-white px-6 py-2 rounded-lg hover:bg-brand-secondary transition-colors"
+              >
+                再読み込み
+              </button>
+            </div>
+          </div>
+        ) : media.length === 0 ? (
+          <div className="flex justify-center items-center py-20">
+            <div className="text-center">
+              <p className="text-4xl mb-4">📷</p>
+              <p className="text-text-secondary">まだ写真がアップロードされていません</p>
+              <p className="text-text-secondary text-sm mt-2">右下のボタンから写真を追加できます</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <Masonry
+              breakpointCols={breakpointColumns}
+              className="my-masonry-grid"
+              columnClassName="my-masonry-grid_column"
+            >
+              {media.map((item, index) => (
+                <div
+                  key={item.id}
+                  className="mb-2 cursor-pointer group relative overflow-hidden rounded-lg"
+                  onClick={() => {
+                    setSelectedPhoto(item)
+                    setSelectedPhotoIndex(index)
+                  }}
+                >
+                  {item.mimeType.startsWith('image/') ? (
+                    <img
+                      src={`http://localhost:8787${item.url}`}
+                      alt={item.fileName}
+                      className="w-full h-auto block transition-transform group-hover:scale-105"
+                    />
+                  ) : item.mimeType.startsWith('video/') ? (
+                    <video
+                      src={`http://localhost:8787${item.url}`}
+                      className="w-full h-auto block"
+                      preload="metadata"
+                    />
+                  ) : null}
+                  {/* ホバー時のオーバーレイ */}
+                  <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-20 transition-opacity" />
+                </div>
+              ))}
+            </Masonry>
+
+            {/* 無限スクロール用のトリガー要素 */}
+            <div ref={observerTarget} className="h-4" />
+
+            {/* 追加読み込み中の表示 */}
+            {isLoadingMore && (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-primary"></div>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       {/* FAB（アップロードボタン） */}
@@ -266,28 +447,19 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
       {isOwner && <TabBar weddingSlug={slug} />}
 
       {/* 写真拡大モーダル（タップ時） */}
-      {selectedPhoto && (
-        <div
-          className="fixed inset-0 bg-black bg-opacity-90 z-50 flex items-center justify-center p-4"
-          onClick={() => setSelectedPhoto(null)}
-        >
-          <div className="relative max-w-4xl w-full">
-            <img
-              src={selectedPhoto.url}
-              alt={`Photo ${selectedPhoto.id}`}
-              className="w-full h-auto rounded-lg"
-            />
-            {/* 閉じるボタン */}
-            <button
-              className="absolute top-4 right-4 text-white bg-black bg-opacity-50 rounded-full p-2 hover:bg-opacity-70"
-              onClick={() => setSelectedPhoto(null)}
-            >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
+      {selectedPhoto && selectedPhotoIndex >= 0 && (
+        <PhotoModal
+          media={media}
+          currentIndex={selectedPhotoIndex}
+          onClose={() => {
+            setSelectedPhoto(null)
+            setSelectedPhotoIndex(-1)
+          }}
+          onNavigate={(newIndex) => {
+            setSelectedPhotoIndex(newIndex)
+            setSelectedPhoto(media[newIndex])
+          }}
+        />
       )}
 
       {/* アップロードボトムシート */}
@@ -296,6 +468,153 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
         onClose={() => setIsUploadSheetOpen(false)}
         onUpload={handleUpload}
       />
+    </div>
+  )
+}
+
+// 写真拡大モーダルコンポーネント
+function PhotoModal({
+  media,
+  currentIndex,
+  onClose,
+  onNavigate,
+}: {
+  media: MediaItem[]
+  currentIndex: number
+  onClose: () => void
+  onNavigate: (index: number) => void
+}) {
+  const currentMedia = media[currentIndex]
+  const totalCount = media.length
+
+  // 前の写真に移動
+  const goToPrevious = () => {
+    if (currentIndex > 0) {
+      onNavigate(currentIndex - 1)
+    }
+  }
+
+  // 次の写真に移動
+  const goToNext = () => {
+    if (currentIndex < totalCount - 1) {
+      onNavigate(currentIndex + 1)
+    }
+  }
+
+  // スワイプハンドラー
+  const swipeHandlers = useSwipeable({
+    onSwipedLeft: goToNext,
+    onSwipedRight: goToPrevious,
+    trackMouse: false, // マウスドラッグは無効化（誤操作防止）
+  })
+
+  // キーボード操作
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') {
+        goToPrevious()
+      } else if (e.key === 'ArrowRight') {
+        goToNext()
+      } else if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [currentIndex, totalCount])
+
+  return (
+    <div
+      className="fixed inset-0 bg-black bg-opacity-95 z-50 flex items-center justify-center"
+      onClick={onClose}
+    >
+      {/* メインコンテンツエリア */}
+      <div
+        {...swipeHandlers}
+        className="relative w-full h-full flex items-center justify-center p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* 画像/動画表示 */}
+        <div className="relative max-w-4xl max-h-full w-full flex items-center justify-center">
+          {currentMedia.mimeType.startsWith('image/') ? (
+            <img
+              src={`http://localhost:8787${currentMedia.url}`}
+              alt={currentMedia.fileName}
+              className="max-w-full max-h-[calc(100vh-8rem)] w-auto h-auto object-contain"
+            />
+          ) : currentMedia.mimeType.startsWith('video/') ? (
+            <video
+              src={`http://localhost:8787${currentMedia.url}`}
+              controls
+              className="max-w-full max-h-[calc(100vh-8rem)] w-auto h-auto"
+            />
+          ) : null}
+        </div>
+
+        {/* 左ナビゲーションボタン */}
+        {currentIndex > 0 && (
+          <button
+            className="absolute left-2 top-1/2 -translate-y-1/2 text-white p-2 hover:opacity-70 transition-opacity z-10"
+            onClick={goToPrevious}
+            style={{ filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5))' }}
+          >
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+        )}
+
+        {/* 右ナビゲーションボタン */}
+        {currentIndex < totalCount - 1 && (
+          <button
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-white p-2 hover:opacity-70 transition-opacity z-10"
+            onClick={goToNext}
+            style={{ filter: 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5))' }}
+          >
+            <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
+
+        {/* 下部情報バー */}
+        <div className="absolute bottom-4 left-0 right-0 flex items-center justify-between px-4">
+          {/* インデックス表示（左下） */}
+          <div className="text-white bg-black bg-opacity-50 px-3 py-2 rounded-lg text-sm font-medium">
+            {currentIndex + 1} / {totalCount}
+          </div>
+
+          {/* 閉じるボタン（中央） */}
+          <button
+            className="text-white bg-black bg-opacity-50 rounded-full p-3 hover:bg-opacity-70 transition-all"
+            onClick={onClose}
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+
+          {/* ダウンロードボタン（右下） */}
+          <button
+            className="text-white bg-black bg-opacity-50 rounded-full p-3 hover:bg-opacity-70 transition-all"
+            onClick={(e) => {
+              e.stopPropagation()
+              // TODO: ダウンロード処理を実装
+              console.log('Download:', currentMedia.fileName)
+            }}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+              />
+            </svg>
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
