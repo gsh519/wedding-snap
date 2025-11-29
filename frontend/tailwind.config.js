@@ -82,6 +82,15 @@ module.exports = {
         'gradient-card': 'linear-gradient(135deg, #FFB3D9 0%, #FF9A8B 100%)',    // カード用（ピンク→オレンジ）
         'gradient-soft': 'linear-gradient(135deg, #FF9A8B10 0%, #FFB3D920 100%)', // ソフトグラデーション
       },
+      keyframes: {
+        'slide-down': {
+          '0%': { transform: 'translate(-50%, -100%)', opacity: '0' },
+          '100%': { transform: 'translate(-50%, 0)', opacity: '1' },
+        },
+      },
+      animation: {
+        'slide-down': 'slide-down 0.3s ease-out',
+      },
     },
   },
   plugins: [],

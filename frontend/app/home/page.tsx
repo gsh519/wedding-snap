@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import TabBar from '@/components/TabBar'
+import { QRCodeCanvas } from 'qrcode.react'
 
 // モックデータ
 const mockData = {
@@ -25,8 +26,122 @@ const mockData = {
 
 export default function Home() {
   const [showQRModal, setShowQRModal] = useState(false)
-  const [showLinkModal, setShowLinkModal] = useState(false)
+  const [showInviteModal, setShowInviteModal] = useState(false)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [showToast, setShowToast] = useState(false)
+  const [toastMessage, setToastMessage] = useState('')
   const shareUrl = `https://weddingsnap.com/wedding/${mockData.weddingInfo.slug}`
+  const qrCodeRef = useRef<HTMLDivElement>(null)
+
+  // 招待文のテキスト
+  const inviteMessage = `ありがとうございます！
+お会いできることを楽しみにしております。
+
+ゲストのみなさまと写真・動画をシェアするために、私たちの結婚式専用のプライベートアルバム WeddingSnap をご用意いたしました。
+
+▼特徴
+・アプリも登録も不要
+・オリジナル画質で写真と動画を保存
+・簡単アップロード
+
+こちらのリンクからアクセスしてください
+${shareUrl}
+
+皆様の素敵な写真をお待ちしております！`
+
+  // 招待リンクをコピー
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl)
+      setToastMessage('リンクをコピーしました')
+      setShowToast(true)
+      // 3秒後にトーストを非表示
+      setTimeout(() => setShowToast(false), 3000)
+    } catch (error) {
+      console.error('Copy error:', error)
+      setToastMessage('コピーに失敗しました')
+      setShowToast(true)
+      setTimeout(() => setShowToast(false), 3000)
+    }
+  }
+
+  // 招待文をコピー
+  const handleCopyInvite = async () => {
+    try {
+      await navigator.clipboard.writeText(inviteMessage)
+      setToastMessage('招待文をコピーしました')
+      setShowToast(true)
+      setShowInviteModal(false) // モーダルを閉じる
+      // 3秒後にトーストを非表示
+      setTimeout(() => setShowToast(false), 3000)
+    } catch (error) {
+      console.error('Copy error:', error)
+      setToastMessage('コピーに失敗しました')
+      setShowToast(true)
+      setTimeout(() => setShowToast(false), 3000)
+    }
+  }
+
+  // QRコードをダウンロード（Web Share API使用）
+  const handleQRDownload = async () => {
+    if (isDownloading) return
+
+    try {
+      setIsDownloading(true)
+
+      // QRコードのCanvasを取得
+      const canvas = qrCodeRef.current?.querySelector('canvas')
+      if (!canvas) {
+        throw new Error('QRコードの生成に失敗しました')
+      }
+
+      // CanvasをBlobに変換
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(blob)
+          } else {
+            reject(new Error('画像の生成に失敗しました'))
+          }
+        }, 'image/png')
+      })
+
+      // ファイル名を生成
+      const fileName = `wedding-qr-${mockData.weddingInfo.slug}.png`
+      const file = new File([blob], fileName, { type: 'image/png' })
+
+      // Web Share API対応チェック
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        // Web Share APIを使用
+        await navigator.share({
+          files: [file],
+          title: 'WeddingSnap QRコード',
+          text: '結婚式の写真共有QRコード',
+        })
+      } else {
+        // フォールバック: 従来のダウンロード方式
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = fileName
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }
+    } catch (error) {
+      // ユーザーがキャンセルした場合はエラーを無視
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Share cancelled by user')
+        return
+      }
+
+      console.error('Download error:', error)
+      alert('ダウンロードに失敗しました。もう一度お試しください。')
+    } finally {
+      setIsDownloading(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background-primary pb-20">
@@ -64,6 +179,20 @@ export default function Home() {
           </div>
         </div>
       </header>
+
+      {/* トースト通知 */}
+      {showToast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-slide-down">
+          <div className="bg-white px-6 py-3 rounded-full shadow-xl border-2 border-brand-primary flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-gradient-to-r from-brand-primary to-brand-accent flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <span className="font-semibold text-text-primary">{toastMessage}</span>
+          </div>
+        </div>
+      )}
 
       {/* メインコンテンツ */}
       <main className="px-4 py-6 space-y-6 max-w-2xl mx-auto">
@@ -124,7 +253,7 @@ export default function Home() {
 
             {/* 招待リンク */}
             <button
-              onClick={() => setShowLinkModal(true)}
+              onClick={handleCopyLink}
               className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 hover:border-brand-primary transition"
             >
               <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded-full">
@@ -141,7 +270,10 @@ export default function Home() {
             </button>
 
             {/* 招待文 */}
-            <button className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 hover:border-brand-primary transition">
+            <button
+              onClick={() => setShowInviteModal(true)}
+              className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 hover:border-brand-primary transition"
+            >
               <div className="w-12 h-12 flex items-center justify-center bg-gray-100 rounded-full">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path
@@ -211,33 +343,68 @@ export default function Home() {
         >
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-text-primary mb-4 text-center">QRコード</h3>
-            <div className="bg-gray-100 w-64 h-64 mx-auto mb-4 flex items-center justify-center rounded-lg">
-              <span className="text-gray-400">QR Code Here</span>
+            <div
+              ref={qrCodeRef}
+              className="bg-white w-64 h-64 mx-auto mb-4 flex items-center justify-center rounded-lg border border-gray-200 p-4"
+            >
+              <QRCodeCanvas
+                value={shareUrl}
+                size={224}
+                level="M"
+              />
             </div>
-            <button className="w-full bg-brand-primary text-white font-semibold py-3 px-6 rounded-full hover:bg-brand-secondary transition">
-              ダウンロード
+            <button
+              className="w-full bg-brand-primary text-white font-semibold py-3 px-6 rounded-full hover:bg-brand-secondary transition disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={handleQRDownload}
+              disabled={isDownloading}
+            >
+              {isDownloading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                  処理中...
+                </span>
+              ) : (
+                'ダウンロード'
+              )}
             </button>
           </div>
         </div>
       )}
 
-      {/* リンクコピーモーダル */}
-      {showLinkModal && (
+      {/* 招待文モーダル */}
+      {showInviteModal && (
         <div
           className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
-          onClick={() => setShowLinkModal(false)}
+          onClick={() => setShowInviteModal(false)}
         >
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-text-primary mb-4 text-center">招待リンク</h3>
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
-              <p className="text-sm text-text-primary break-all">{shareUrl}</p>
-            </div>
+          <div
+            className="bg-white rounded-2xl p-6 max-w-md w-full relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* 閉じるボタン */}
             <button
-              className="w-full bg-brand-primary text-white font-semibold py-3 px-6 rounded-full hover:bg-brand-secondary transition"
-              onClick={() => {
-                navigator.clipboard.writeText(shareUrl)
-                alert('リンクをコピーしました！')
-              }}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition"
+              onClick={() => setShowInviteModal(false)}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* タイトル */}
+            <h3 className="text-lg font-bold text-text-primary mb-4 text-center">招待文をコピー</h3>
+
+            {/* 招待文表示エリア */}
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4 max-h-96 overflow-y-auto">
+              <p className="text-sm text-text-primary whitespace-pre-wrap leading-relaxed">
+                {inviteMessage}
+              </p>
+            </div>
+
+            {/* コピーボタン */}
+            <button
+              className="w-full bg-gradient-to-r from-brand-primary to-brand-accent text-white font-semibold py-3 px-6 rounded-full hover:opacity-90 transition"
+              onClick={handleCopyInvite}
             >
               コピー
             </button>
