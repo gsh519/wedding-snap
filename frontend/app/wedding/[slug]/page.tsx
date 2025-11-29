@@ -486,6 +486,7 @@ function PhotoModal({
 }) {
   const currentMedia = media[currentIndex]
   const totalCount = media.length
+  const [isDownloading, setIsDownloading] = useState(false)
 
   // 前の写真に移動
   const goToPrevious = () => {
@@ -507,6 +508,57 @@ function PhotoModal({
     onSwipedRight: goToPrevious,
     trackMouse: false, // マウスドラッグは無効化（誤操作防止）
   })
+
+  // ダウンロード処理
+  const handleDownload = async () => {
+    if (isDownloading) return
+
+    try {
+      setIsDownloading(true)
+
+      // 画像URLを取得
+      const imageUrl = `http://localhost:8787${currentMedia.url}`
+
+      // 画像をfetchしてBlobを取得
+      const response = await fetch(imageUrl)
+      if (!response.ok) {
+        throw new Error('画像の取得に失敗しました')
+      }
+
+      const blob = await response.blob()
+      const file = new File([blob], currentMedia.fileName, { type: currentMedia.mimeType })
+
+      // Web Share API対応チェック
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        // Web Share APIを使用（スマホで「写真に追加」が表示される）
+        await navigator.share({
+          files: [file],
+          title: currentMedia.fileName,
+        })
+      } else {
+        // フォールバック: 従来のダウンロード方式
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = currentMedia.fileName
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      }
+    } catch (error) {
+      // ユーザーがキャンセルした場合はエラーを無視
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('Share cancelled by user')
+        return
+      }
+
+      console.error('Download error:', error)
+      alert('ダウンロードに失敗しました。もう一度お試しください。')
+    } finally {
+      setIsDownloading(false)
+    }
+  }
 
   // キーボード操作
   useEffect(() => {
@@ -597,21 +649,25 @@ function PhotoModal({
 
           {/* ダウンロードボタン（右下） */}
           <button
-            className="text-white bg-black bg-opacity-50 rounded-full p-3 hover:bg-opacity-70 transition-all"
+            className="text-white bg-black bg-opacity-50 rounded-full p-3 hover:bg-opacity-70 transition-all disabled:opacity-50"
             onClick={(e) => {
               e.stopPropagation()
-              // TODO: ダウンロード処理を実装
-              console.log('Download:', currentMedia.fileName)
+              handleDownload()
             }}
+            disabled={isDownloading}
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-              />
-            </svg>
+            {isDownloading ? (
+              <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+            ) : (
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                />
+              </svg>
+            )}
           </button>
         </div>
       </div>
