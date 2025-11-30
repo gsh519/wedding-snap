@@ -1,19 +1,24 @@
 import { Router, error, json } from 'itty-router'
 import { eq, gt } from 'drizzle-orm'
 import { getDb } from './db/client'
-import { albums, medias } from './db/schema'
+import { albums, medias, users } from './db/schema'
 import {
   checkStorageLimit,
   checkAlbumExpiration,
   validateMimeType,
   validateFileSize,
 } from './utils/validation'
+import { generateSlug } from './utils/slug'
+import { verifyToken, createClerkClient } from '@clerk/backend'
+import { STORAGE_LIMITS, ALBUM_EXPIRATION_DAYS, PLAN_TYPES } from './utils/config'
 
 // 型定義
 export interface Env {
   DB: D1Database
   BUCKET: R2Bucket
   ENVIRONMENT: string
+  CLERK_SECRET_KEY: string
+  CLERK_PUBLISHABLE_KEY: string
 }
 
 // CORS設定
@@ -35,6 +40,263 @@ router.get('/health', () => {
 })
 
 // API Routes
+
+// 現在のユーザー情報とアルバム取得（Clerk認証後）
+router.get('/api/auth/me', async (request, env: Env) => {
+  try {
+    const db = getDb(env.DB)
+
+    // Authorization headerからJWTトークンを取得
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return json(
+        { error: '認証情報が必要です' },
+        { status: 401, headers: corsHeaders }
+      )
+    }
+
+    const token = authHeader.substring(7)
+
+    // Clerk JWTトークンを検証
+    let clerkUser
+    try {
+      clerkUser = await verifyToken(token, {
+        secretKey: env.CLERK_SECRET_KEY,
+      })
+    } catch (e: any) {
+      console.error('JWT verification failed in /api/auth/me:', e)
+      console.error('Error details:', e.message)
+      return json(
+        { error: '認証に失敗しました', details: e.message },
+        { status: 401, headers: corsHeaders }
+      )
+    }
+
+    const userId = clerkUser.sub as string
+    if (!userId) {
+      return json(
+        { error: 'ユーザー情報の取得に失敗しました' },
+        { status: 400, headers: corsHeaders }
+      )
+    }
+
+    // usersテーブルから取得
+    const userResult = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+
+    const user = userResult[0]
+
+    // ユーザーが存在しない場合は登録なし
+    if (!user) {
+      return json(
+        {
+          hasAccount: false,
+          user: null,
+          album: null,
+        },
+        { headers: corsHeaders }
+      )
+    }
+
+    // アルバム情報を取得
+    const albumResult = await db
+      .select()
+      .from(albums)
+      .where(eq(albums.userId, userId))
+      .limit(1)
+
+    const album = albumResult[0]
+
+    return json(
+      {
+        hasAccount: true,
+        user: {
+          id: user.id,
+          email: user.email,
+          displayName: user.displayName,
+        },
+        album: album ? {
+          id: album.id,
+          slug: album.slug,
+          albumName: album.albumName,
+          eventDate: album.eventDate,
+          planType: album.planType,
+          storageUsed: album.storageUsed,
+          storageLimit: album.storageLimit,
+          expireAt: album.expireAt,
+        } : null,
+      },
+      { headers: corsHeaders }
+    )
+  } catch (e) {
+    console.error('Error fetching user info:', e)
+    return json(
+      { error: 'サーバーエラーが発生しました' },
+      { status: 500, headers: corsHeaders }
+    )
+  }
+})
+
+// 新規会員登録（Clerk認証後）
+router.post('/api/auth/signup', async (request, env: Env) => {
+  try {
+    const db = getDb(env.DB)
+
+    // Authorization headerからJWTトークンを取得
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return json(
+        { error: '認証情報が必要です' },
+        { status: 401, headers: corsHeaders }
+      )
+    }
+
+    const token = authHeader.substring(7) // "Bearer "を除去
+
+    // Clerk JWTトークンを検証
+    let clerkUser
+    try {
+      clerkUser = await verifyToken(token, {
+        secretKey: env.CLERK_SECRET_KEY,
+      })
+    } catch (e: any) {
+      console.error('JWT verification failed in /api/auth/signup:', e)
+      console.error('Error details:', e.message)
+      return json(
+        { error: '認証に失敗しました', details: e.message },
+        { status: 401, headers: corsHeaders }
+      )
+    }
+
+    // リクエストボディを取得
+    const body = await request.json() as {
+      albumName: string
+      eventDate: string
+    }
+
+    if (!body.albumName || !body.eventDate) {
+      return json(
+        { error: '結婚式名と結婚式日は必須です' },
+        { status: 400, headers: corsHeaders }
+      )
+    }
+
+    // Clerk User IDを取得
+    const userId = clerkUser.sub as string
+    if (!userId) {
+      return json(
+        { error: 'ユーザーIDの取得に失敗しました' },
+        { status: 400, headers: corsHeaders }
+      )
+    }
+
+    // Clerk APIでユーザー詳細情報を取得
+    const clerkClient = createClerkClient({
+      secretKey: env.CLERK_SECRET_KEY,
+    })
+
+    let clerkUserDetails
+    try {
+      clerkUserDetails = await clerkClient.users.getUser(userId)
+    } catch (e: any) {
+      console.error('Failed to fetch Clerk user details:', e)
+      return json(
+        { error: 'ユーザー情報の取得に失敗しました' },
+        { status: 400, headers: corsHeaders }
+      )
+    }
+
+    // メールアドレスと表示名を取得
+    const email = clerkUserDetails.emailAddresses?.[0]?.emailAddress
+    const displayName = clerkUserDetails.firstName && clerkUserDetails.lastName
+      ? `${clerkUserDetails.firstName} ${clerkUserDetails.lastName}`
+      : clerkUserDetails.firstName || clerkUserDetails.lastName || null
+
+    if (!email) {
+      return json(
+        { error: 'メールアドレスの取得に失敗しました' },
+        { status: 400, headers: corsHeaders }
+      )
+    }
+
+    // usersテーブルに存在チェック（既存ユーザーは新規登録不可）
+    const existingUser = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1)
+
+    if (existingUser.length > 0) {
+      return json(
+        { error: '既に登録済みです。ログインしてください。' },
+        { status: 400, headers: corsHeaders }
+      )
+    }
+
+    // usersテーブルに新規登録
+    await db.insert(users).values({
+      id: userId,
+      email: email,
+      displayName: displayName || null,
+    })
+
+    // ユニークなslugを生成（衝突がなくなるまで試行）
+    let slug = ''
+    let isUniqueSlug = false
+
+    while (!isUniqueSlug) {
+      slug = generateSlug()
+
+      // 同じslugが既に存在するかチェック
+      const existingAlbum = await db
+        .select()
+        .from(albums)
+        .where(eq(albums.slug, slug))
+        .limit(1)
+
+      if (existingAlbum.length === 0) {
+        isUniqueSlug = true
+      }
+    }
+
+    // albumsテーブルに新規アルバムを作成
+    const albumId = crypto.randomUUID()
+    const now = new Date()
+    const expireAt = new Date(now.getTime() + ALBUM_EXPIRATION_DAYS * 24 * 60 * 60 * 1000)
+
+    await db.insert(albums).values({
+      id: albumId,
+      userId: userId,
+      slug: slug,
+      albumName: body.albumName,
+      eventDate: body.eventDate,
+      planType: PLAN_TYPES.FREE,
+      storageUsed: 0,
+      storageLimit: STORAGE_LIMITS.FREE_PLAN,
+      downloadCount: 0,
+      expireAt: expireAt.toISOString(),
+    })
+
+    return json(
+      {
+        success: true,
+        albumId,
+        slug,
+        message: 'アルバムが作成されました',
+      },
+      { status: 201, headers: corsHeaders }
+    )
+  } catch (e) {
+    console.error('Error in signup:', e)
+    return json(
+      { error: 'サーバーエラーが発生しました' },
+      { status: 500, headers: corsHeaders }
+    )
+  }
+})
 
 // イベント一覧取得
 router.get('/api/events', async (request, env: Env) => {

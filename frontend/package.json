@@ -12,6 +12,7 @@
     "pages:deploy": "npm run pages:build && wrangler pages deploy .open-next/worker"
   },
   "dependencies": {
+    "@clerk/backend": "^2.24.0",
     "@clerk/nextjs": "^6.35.5",
     "next": "^15.1.0",
     "qrcode.react": "^4.2.0",

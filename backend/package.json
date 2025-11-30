@@ -12,6 +12,7 @@
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@clerk/backend": "^1.20.0",
     "drizzle-orm": "^0.44.7",
     "itty-router": "^5.0.18"
   },
