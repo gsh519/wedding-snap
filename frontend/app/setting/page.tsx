@@ -1,5 +1,7 @@
 'use client'
 
+import { useClerk } from '@clerk/nextjs'
+import { useRouter } from 'next/navigation'
 import TabBar from '@/components/TabBar'
 
 // モックデータ
@@ -20,6 +22,14 @@ const mockData = {
 }
 
 export default function SettingPage() {
+  const { signOut } = useClerk()
+  const router = useRouter()
+
+  const handleLogout = async () => {
+    await signOut()
+    router.push('/')
+  }
+
   return (
     <div className="min-h-screen bg-background-primary pb-20">
       {/* ヘッダー */}
@@ -156,7 +166,10 @@ export default function SettingPage() {
           <div className="text-sm text-text-secondary mb-4">
             メール: {mockData.account.email}
           </div>
-          <button className="w-full bg-gray-500 text-white font-semibold py-3 px-6 rounded-full hover:bg-gray-600 transition">
+          <button
+            onClick={handleLogout}
+            className="w-full bg-gray-500 text-white font-semibold py-3 px-6 rounded-full hover:bg-gray-600 transition"
+          >
             ログアウト
           </button>
         </div>
