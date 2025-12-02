@@ -3,11 +3,11 @@
 import { useClerk } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
 import TabBar from '@/components/TabBar'
+import { useUserStore } from '@/store/userStore'
 
 // モックデータ
 const mockData = {
   weddingInfo: {
-    slug: 'a7x9k2p4',
     names: 'Yuto & Mei',
   },
   plan: {
@@ -24,6 +24,10 @@ const mockData = {
 export default function SettingPage() {
   const { signOut } = useClerk()
   const router = useRouter()
+
+  // storeからalbum情報を取得
+  const { album } = useUserStore()
+  const slug = album?.slug || ''
 
   const handleLogout = async () => {
     await signOut()
@@ -176,7 +180,7 @@ export default function SettingPage() {
       </main>
 
       {/* タブバー */}
-      <TabBar weddingSlug={mockData.weddingInfo.slug} />
+      <TabBar weddingSlug={slug} />
     </div>
   )
 }

@@ -3,13 +3,13 @@
 import { useState, useRef } from 'react'
 import TabBar from '@/components/TabBar'
 import { QRCodeCanvas } from 'qrcode.react'
+import { useUserStore } from '@/store/userStore'
 
 // モックデータ
 const mockData = {
   weddingInfo: {
     date: 'Nov 12',
     names: 'Yuto & Mei',
-    slug: 'a7x9k2p4',
   },
   stats: {
     photosCount: 3,
@@ -30,8 +30,12 @@ export default function Home() {
   const [isDownloading, setIsDownloading] = useState(false)
   const [showToast, setShowToast] = useState(false)
   const [toastMessage, setToastMessage] = useState('')
-  const shareUrl = `https://weddingsnap.com/wedding/${mockData.weddingInfo.slug}`
   const qrCodeRef = useRef<HTMLDivElement>(null)
+
+  // storeからalbum情報を取得
+  const { album } = useUserStore()
+  const slug = album?.slug || ''
+  const shareUrl = `https://weddingsnap.com/wedding/${slug}`
 
   // 招待文のテキスト
   const inviteMessage = `ありがとうございます！
@@ -107,7 +111,7 @@ ${shareUrl}
       })
 
       // ファイル名を生成
-      const fileName = `wedding-qr-${mockData.weddingInfo.slug}.png`
+      const fileName = `wedding-qr-${slug}.png`
       const file = new File([blob], fileName, { type: 'image/png' })
 
       // Web Share API対応チェック
@@ -333,7 +337,7 @@ ${shareUrl}
       </main>
 
       {/* タブバー */}
-      <TabBar weddingSlug={mockData.weddingInfo.slug} />
+      <TabBar weddingSlug={slug} />
 
       {/* QRコードモーダル */}
       {showQRModal && (

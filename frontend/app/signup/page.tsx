@@ -4,11 +4,13 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { SignInButton, useAuth } from '@clerk/nextjs'
+import { useUserStore } from '@/store/userStore'
 
 export default function SignupPage() {
   const router = useRouter()
   const { isSignedIn, isLoaded, getToken } = useAuth()
   const [isChecking, setIsChecking] = useState(false)
+  const { setUserData } = useUserStore()
 
   useEffect(() => {
     const checkUserStatus = async () => {
@@ -39,6 +41,9 @@ export default function SignupPage() {
 
           if (response.ok) {
             const data = await response.json()
+
+            // storeにユーザーデータを保存
+            setUserData(data)
 
             // アルバムが存在する場合は/wedding/:slugにリダイレクト
             if (data.album) {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@clerk/nextjs'
+import { useUserStore } from '@/store/userStore'
 
 export default function EventInfoPage() {
   const router = useRouter()
@@ -12,6 +13,7 @@ export default function EventInfoPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [isChecking, setIsChecking] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const { setUserData } = useUserStore()
 
   useEffect(() => {
     const checkUserAlbum = async () => {
@@ -40,6 +42,9 @@ export default function EventInfoPage() {
 
           if (response.ok) {
             const data = await response.json()
+
+            // storeにユーザーデータを保存
+            setUserData(data)
 
             // アルバムが既に存在する場合は/wedding/:slugにリダイレクト
             if (data.album) {
@@ -98,6 +103,18 @@ export default function EventInfoPage() {
         setError(data.error || 'アカウントの作成に失敗しました。時間をあけて再度お試しください。')
         setIsLoading(false)
         return
+      }
+
+      // 成功したら、ユーザーデータを再取得してstoreに保存
+      const meResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/me`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (meResponse.ok) {
+        const userData = await meResponse.json()
+        setUserData(userData)
       }
 
       // 成功したら/wedding/:slugへリダイレクト
