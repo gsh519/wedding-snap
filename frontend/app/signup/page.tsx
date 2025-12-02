@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { SignInButton, useAuth } from '@clerk/nextjs'
 
 export default function SignupPage() {
@@ -144,11 +145,9 @@ export default function SignupPage() {
           {/* ログインリンク */}
           <p className="text-center text-sm text-text-secondary">
             アカウントをお持ちの方は{' '}
-            <SignInButton mode="modal">
-              <button className="text-brand-primary font-semibold hover:underline">
-                ログイン
-              </button>
-            </SignInButton>
+            <Link href="/login" className="text-brand-primary font-semibold hover:underline">
+              ログイン
+            </Link>
           </p>
         </div>
       </div>
