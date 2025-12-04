@@ -1,30 +1,35 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import TabBar from '@/components/TabBar'
 import { QRCodeCanvas } from 'qrcode.react'
 import { useUserStore } from '@/store/userStore'
 
-// モックデータ
-const mockData = {
-  weddingInfo: {
-    date: 'Nov 12',
-    names: 'Yuto & Mei',
-  },
-  stats: {
-    photosCount: 3,
-    moviesCount: 0,
-    totalMinutes: 0,
-    usedGB: 0.5,
-    totalGB: 2,
-    daysLeft: 23,
-  },
-  plan: {
-    isFree: true,
-  },
+// ヘルパー関数：日付を "Nov 12" 形式にフォーマット
+const formatEventDate = (isoDate: string): string => {
+  const date = new Date(isoDate)
+  const month = date.toLocaleDateString('en-US', { month: 'short' })
+  const day = date.getDate()
+  return `${month} ${day}`
+}
+
+// ヘルパー関数：残り日数を計算
+const calculateDaysLeft = (expireAt: string): number => {
+  const expireDate = new Date(expireAt)
+  const today = new Date()
+  const diffTime = expireDate.getTime() - today.getTime()
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  return Math.max(0, diffDays) // 負の数にならないように
+}
+
+// ヘルパー関数：バイトをGBに変換
+const bytesToGB = (bytes: number): string => {
+  return (bytes / (1024 * 1024 * 1024)).toFixed(1)
 }
 
 export default function Home() {
+  const router = useRouter()
   const [showQRModal, setShowQRModal] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
@@ -34,8 +39,30 @@ export default function Home() {
 
   // storeからalbum情報を取得
   const { album } = useUserStore()
-  const slug = album?.slug || ''
+
+  // albumがnullの場合は新規会員登録画面へ遷移
+  useEffect(() => {
+    if (album === null) {
+      alert('アカウントの登録をお願いします')
+      router.push('/signup')
+    }
+  }, [album, router])
+
+  // albumがnullの場合は何も表示しない（リダイレクト中）
+  if (!album) {
+    return null
+  }
+
+  const slug = album.slug
   const shareUrl = `https://weddingsnap.com/wedding/${slug}`
+
+  // storeから取得したデータを整形
+  const eventDate = formatEventDate(album.eventDate)
+  const albumName = album.albumName
+  const usedGB = bytesToGB(album.storageUsed)
+  const totalGB = bytesToGB(album.storageLimit)
+  const daysLeft = calculateDaysLeft(album.expireAt)
+  const isFree = album.planType === 0
 
   // 招待文のテキスト
   const inviteMessage = `ありがとうございます！
@@ -204,30 +231,24 @@ ${shareUrl}
         <div className="bg-background-card rounded-2xl shadow-sm border border-brand-accent/20 p-6">
           {/* 結婚式情報 */}
           <div className="text-center mb-4">
-            <div className="text-sm text-text-secondary mb-1">{mockData.weddingInfo.date}</div>
+            <div className="text-sm text-text-secondary mb-1">{eventDate}</div>
             <h1 className="text-2xl font-bold text-text-primary mb-4">
-              {mockData.weddingInfo.names}
+              {albumName}
             </h1>
           </div>
 
           {/* 統計情報 */}
-          <div className="flex items-center justify-center gap-4 text-sm text-text-secondary mb-2">
+          <div className="flex items-center justify-center gap-4 text-sm text-text-secondary">
             <div className="flex items-center gap-1">
               <span>💾</span>
               <span>
-                {mockData.stats.usedGB}GB / {mockData.stats.totalGB}GB
+                {usedGB}GB / {totalGB}GB
               </span>
             </div>
             <div className="flex items-center gap-1">
               <span>⏰</span>
-              <span>あと{mockData.stats.daysLeft}日</span>
+              <span>あと{daysLeft}日</span>
             </div>
-          </div>
-
-          {/* 写真・動画枚数 */}
-          <div className="text-center text-sm text-text-secondary">
-            {mockData.stats.photosCount} photos, {mockData.stats.moviesCount} movies,{' '}
-            {mockData.stats.totalMinutes} minutes
           </div>
         </div>
 
@@ -311,7 +332,7 @@ ${shareUrl}
         </div>
 
         {/* プランアップグレードカード（無料プランの場合のみ） */}
-        {mockData.plan.isFree && (
+        {isFree && (
           <div className="bg-gradient-to-r from-orange-50 to-pink-50 rounded-2xl shadow-sm border border-brand-accent/20 p-6">
             <div className="flex items-start gap-3 mb-4">
               <div className="w-10 h-10 flex items-center justify-center bg-white rounded-full flex-shrink-0">
