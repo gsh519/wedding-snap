@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useAuth } from '@clerk/nextjs'
 import TabBar from '@/components/TabBar'
 import { QRCodeCanvas } from 'qrcode.react'
 import { useUserStore } from '@/store/userStore'
@@ -30,8 +31,10 @@ const bytesToGB = (bytes: number): string => {
 
 export default function Home() {
   const router = useRouter()
+  const { getToken } = useAuth()
   const [showQRModal, setShowQRModal] = useState(false)
   const [showInviteModal, setShowInviteModal] = useState(false)
+  const [showDownloadModal, setShowDownloadModal] = useState(false)
   const [isDownloading, setIsDownloading] = useState(false)
   const [showToast, setShowToast] = useState(false)
   const [toastMessage, setToastMessage] = useState('')
@@ -108,6 +111,56 @@ ${shareUrl}
     } catch (error) {
       console.error('Copy error:', error)
       setToastMessage('コピーに失敗しました')
+      setShowToast(true)
+      setTimeout(() => setShowToast(false), 3000)
+    }
+  }
+
+  // 一括ダウンロードリクエスト
+  const handleDownloadRequest = async () => {
+    try {
+      setShowDownloadModal(false)
+
+      // Clerkトークン取得
+      const token = await getToken()
+
+      if (!token) {
+        setToastMessage('認証エラーが発生しました。ログインし直してください。')
+        setShowToast(true)
+        setTimeout(() => setShowToast(false), 3000)
+        return
+      }
+
+      // API呼び出し
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/albums/${slug}/download/request`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        // エラーハンドリング
+        if (data.upgradeRequired) {
+          // 無料プランの回数制限エラー
+          setToastMessage(data.message || 'ダウンロード回数の上限に達しました')
+        } else {
+          setToastMessage(data.error || 'エラーが発生しました')
+        }
+        setShowToast(true)
+        setTimeout(() => setShowToast(false), 5000)
+        return
+      }
+
+      // 成功時
+      setToastMessage('ZIPファイルの生成を開始しました。完了後、メールでお知らせします。')
+      setShowToast(true)
+      setTimeout(() => setShowToast(false), 5000)
+    } catch (error) {
+      console.error('Download request error:', error)
+      setToastMessage('エラーが発生しました。もう一度お試しください。')
       setShowToast(true)
       setTimeout(() => setShowToast(false), 3000)
     }
@@ -326,7 +379,10 @@ ${shareUrl}
           <h2 className="text-lg font-bold text-text-primary mb-4">📦 一括ダウンロード</h2>
 
           {/* ZIP生成ボタン */}
-          <button className="w-full bg-brand-primary text-white font-semibold py-3 px-6 rounded-full hover:bg-brand-secondary transition">
+          <button
+            onClick={() => setShowDownloadModal(true)}
+            className="w-full bg-brand-primary text-white font-semibold py-3 px-6 rounded-full hover:bg-brand-secondary transition"
+          >
             ZIP生成してメールで受け取る
           </button>
         </div>
@@ -433,6 +489,91 @@ ${shareUrl}
             >
               コピー
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 一括ダウンロード確認モーダル */}
+      {showDownloadModal && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+          onClick={() => setShowDownloadModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl p-6 max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* タイトル */}
+            <h3 className="text-lg font-bold text-text-primary mb-4 text-center">📦 一括ダウンロード</h3>
+
+            {/* 無料プランの警告 */}
+            {isFree && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4">
+                <div className="flex items-start gap-2">
+                  <span className="text-xl">⚠️</span>
+                  <div className="flex-1">
+                    <p className="font-semibold text-yellow-800 mb-1">
+                      残り1回のダウンロードを使用します
+                    </p>
+                    <p className="text-sm text-yellow-700">
+                      有料プランでは無制限にダウンロード可能です
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 有料プランの確認 */}
+            {!isFree && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-4">
+                <div className="flex items-start gap-2">
+                  <span className="text-xl">✅</span>
+                  <div className="flex-1">
+                    <p className="font-semibold text-green-800">
+                      ZIPファイルを生成します
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* 共通の注意書き */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 space-y-3">
+              <div className="flex items-start gap-2">
+                <span className="text-lg">📧</span>
+                <p className="text-sm text-blue-800">
+                  生成完了後、メールでダウンロードリンクをお送りします
+                </p>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-lg">⏰</span>
+                <p className="text-sm text-blue-800">
+                  ダウンロードリンクは7日間のみ有効です
+                </p>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-lg">📸</span>
+                <p className="text-sm text-blue-800">
+                  写真が多い場合、複数のZIPに分割されることがあります
+                </p>
+              </div>
+            </div>
+
+            {/* ボタン */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDownloadModal(false)}
+                className="flex-1 bg-gray-200 text-gray-700 font-semibold py-3 px-6 rounded-full hover:bg-gray-300 transition"
+              >
+                キャンセル
+              </button>
+              <button
+                onClick={handleDownloadRequest}
+                className="flex-1 bg-gradient-to-r from-brand-primary to-brand-accent text-white font-semibold py-3 px-6 rounded-full hover:opacity-90 transition"
+              >
+                生成する
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -50,11 +50,15 @@ export const downloadJobs = sqliteTable('download_jobs', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   userId: text('user_id').notNull().references(() => users.id),
   albumId: text('album_id').notNull().references(() => albums.id),
+  secretToken: text('secret_token').notNull().unique(), // ダウンロード用秘密トークン（UUID）
   jobStatus: integer('job_status').notNull().default(0), // 0: pending, 1: processing, 2: completed, 3: failed
   retryCount: integer('retry_count').notNull().default(0),
-  zipR2Key: text('zip_r2_key'), // ZIPファイルのR2キー
   createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   completedAt: text('completed_at'),
+  // 一括ダウンロード機能用の追加フィールド
+  totalFiles: integer('total_files'), // 総ファイル数
+  zipCount: integer('zip_count').default(1), // 分割ZIP数（500枚ごと）
+  zipR2Keys: text('zip_r2_keys'), // JSON配列: ["key1", "key2"]
 })
 
 // ========================================

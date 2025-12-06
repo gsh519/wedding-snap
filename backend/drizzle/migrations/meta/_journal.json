@@ -8,6 +8,27 @@
       "when": 1763865368001,
       "tag": "0000_handy_frightful_four",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1764888721951,
+      "tag": "0001_handy_mac_gargan",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1764948037420,
+      "tag": "0002_funny_azazel",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1765002541678,
+      "tag": "0003_overjoyed_calypso",
+      "breakpoints": true
     }
   ]
 }

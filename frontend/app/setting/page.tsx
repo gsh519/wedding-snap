@@ -5,28 +5,20 @@ import { useRouter } from 'next/navigation'
 import TabBar from '@/components/TabBar'
 import { useUserStore } from '@/store/userStore'
 
-// モックデータ
-const mockData = {
-  weddingInfo: {
-    names: 'Yuto & Mei',
-  },
-  plan: {
-    isFree: true,
-    expiryDate: '2026/2/9',
-    inviteLimit: 5,
-    uploadLimit: 30,
-  },
-  account: {
-    email: 'yuto@example.com',
-  },
+// 日付フォーマット関数（ISO形式 -> YYYY/M/D形式）
+const formatDate = (isoDate: string | null | undefined): string => {
+  if (!isoDate) return ''
+  const date = new Date(isoDate)
+  if (isNaN(date.getTime())) return ''
+  return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
 }
 
 export default function SettingPage() {
   const { signOut } = useClerk()
   const router = useRouter()
 
-  // storeからalbum情報を取得
-  const { album } = useUserStore()
+  // storeからユーザー情報とアルバム情報を取得
+  const { user, album } = useUserStore()
   const slug = album?.slug || ''
 
   const handleLogout = async () => {
@@ -75,7 +67,7 @@ export default function SettingPage() {
           <label className="block text-sm font-semibold text-text-primary mb-3">結婚式名</label>
           <input
             type="text"
-            defaultValue={mockData.weddingInfo.names}
+            defaultValue={album?.albumName || ''}
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-transparent mb-3"
             placeholder="例: Yuto & Mei"
           />
@@ -88,9 +80,9 @@ export default function SettingPage() {
         <div className="bg-background-card rounded-2xl shadow-sm border border-brand-accent/20 p-6">
           <h2 className="text-lg font-bold text-text-primary mb-2 flex items-center gap-2">
             <span className="text-2xl">📦</span>
-            無料トライアル
+            {album?.planType === 0 ? '無料トライアル' : '有料プラン'}
           </h2>
-          <p className="text-sm text-text-secondary mb-4">~ {mockData.plan.expiryDate}</p>
+          <p className="text-sm text-text-secondary mb-4">~ {formatDate(album?.expireAt)}</p>
           <button className="w-full bg-gradient-to-r from-brand-primary to-brand-accent text-white font-semibold py-3 px-6 rounded-full hover:opacity-90 transition mb-6">
             プランをアップグレード
           </button>
@@ -167,9 +159,6 @@ export default function SettingPage() {
         {/* アカウント情報 */}
         <div className="bg-background-card rounded-2xl shadow-sm border border-brand-accent/20 p-6">
           <h3 className="text-sm font-semibold text-text-primary mb-3">アカウント</h3>
-          <div className="text-sm text-text-secondary mb-4">
-            メール: {mockData.account.email}
-          </div>
           <button
             onClick={handleLogout}
             className="w-full bg-gray-500 text-white font-semibold py-3 px-6 rounded-full hover:bg-gray-600 transition"

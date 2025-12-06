@@ -5,9 +5,12 @@ import Masonry from 'react-masonry-css'
 import { useState, use, useEffect, useRef } from 'react'
 import { notFound } from 'next/navigation'
 import { useSwipeable } from 'react-swipeable'
+import { useAuth } from '@clerk/nextjs'
 import TabBar from '@/components/TabBar'
 import UploadBottomSheet from '@/components/UploadBottomSheet'
 import NotificationBanner from '@/components/NotificationBanner'
+import { JobStatus } from '@backend/src/db/schema'
+import { useUserStore } from '@/store/userStore'
 
 // 型定義
 type MediaItem = {
@@ -23,7 +26,9 @@ type MediaItem = {
 
 export default function GalleryPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = use(params)
-  const [isOwner] = useState(true) // 仮: 新郎新婦としてログイン中
+  const { getToken, isSignedIn } = useAuth()
+  const { album } = useUserStore()
+  const isOwner = isSignedIn && album?.slug === slug
 
   // メディア関連のstate
   const [media, setMedia] = useState<MediaItem[]>([])
@@ -53,6 +58,71 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
     type: 'success',
     isVisible: false,
   })
+
+  // ダウンロードジョブ情報（完了時のみ保存）
+  const [downloadJob, setDownloadJob] = useState<{
+    secretToken: string
+    zipCount: number
+    totalFiles: number
+  } | null>(null)
+
+  // ジョブ状態チェック（ギャラリー画面アクセス時に1回だけ）
+  useEffect(() => {
+    const checkJobStatus = async () => {
+      if (!isOwner) return // オーナーのみチェック
+
+      try {
+        const token = await getToken()
+        if (!token) return
+
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/api/albums/${slug}/download/status`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        )
+
+        if (!response.ok) return // ジョブが存在しないかエラー
+
+        const data = await response.json()
+        const { job } = data
+
+        if (!job) return // アクティブなジョブがない
+
+        // ジョブステータスに応じて通知を表示
+        if (job.jobStatus === JobStatus.COMPLETED) {
+          // ジョブ情報を保存
+          setDownloadJob({
+            secretToken: job.secretToken,
+            zipCount: job.zipCount || 1,
+            totalFiles: job.totalFiles || 0,
+          })
+          setNotification({
+            message: 'ZIPファイルが完成しました！メールをご確認ください。',
+            type: 'success',
+            isVisible: true,
+          })
+        } else if (job.jobStatus === JobStatus.PROCESSING || job.jobStatus === JobStatus.PENDING) {
+          setNotification({
+            message: 'ZIP生成中です...しばらくお待ちください。',
+            type: 'warning',
+            isVisible: true,
+          })
+        } else if (job.jobStatus === JobStatus.FAILED) {
+          setNotification({
+            message: 'ZIP生成に失敗しました。もう一度お試しください。',
+            type: 'error',
+            isVisible: true,
+          })
+        }
+      } catch (error) {
+        console.error('Failed to check job status:', error)
+        // エラーは静かに処理（ユーザーには通知しない）
+      }
+    }
+
+    checkJobStatus()
+  }, [slug, isOwner, getToken])
 
   // Masonryのブレークポイント設定
   const breakpointColumns = {
@@ -352,6 +422,35 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
               className="bg-brand-primary h-full transition-all duration-300"
               style={{ width: `${uploadProgress}%` }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* ダウンロードボタン（オーナーかつジョブ完了時のみ） */}
+      {isOwner && downloadJob && !isUploading && (
+        <div className="sticky top-16 z-20 bg-white border-b border-gray-200 px-4 py-4 shadow-sm">
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">📦</span>
+              <p className="text-sm font-semibold text-gray-800">
+                {downloadJob.totalFiles}枚の写真がダウンロード可能です
+              </p>
+            </div>
+            {Array.from({ length: downloadJob.zipCount }).map((_, index) => (
+              <a
+                key={index}
+                href={`${process.env.NEXT_PUBLIC_API_URL}/download/${downloadJob.secretToken}?index=${index}`}
+                download
+                className="w-full bg-gradient-to-r from-brand-primary to-brand-accent text-white font-semibold py-3 px-6 rounded-full hover:opacity-90 transition text-center"
+              >
+                {downloadJob.zipCount > 1
+                  ? `ZIP (${index + 1}/${downloadJob.zipCount}) をダウンロード`
+                  : 'ZIPをダウンロード'}
+              </a>
+            ))}
+            <p className="text-xs text-gray-500 text-center">
+              ダウンロードリンクは7日間有効です
+            </p>
           </div>
         </div>
       )}
