@@ -9,7 +9,7 @@ import { useAuth } from '@clerk/nextjs'
 import TabBar from '@/components/TabBar'
 import UploadBottomSheet from '@/components/UploadBottomSheet'
 import NotificationBanner from '@/components/NotificationBanner'
-import { JobStatus } from '@backend/src/db/schema'
+import { JobStatus } from '@/types/api'
 import { useUserStore } from '@/store/userStore'
 
 // 型定義

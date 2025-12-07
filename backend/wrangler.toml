@@ -14,13 +14,35 @@ migrations_dir = "drizzle/migrations"
 binding = "BUCKET"
 bucket_name = "wedding-snap-media"
 
+# Queue設定（ZIP生成の非同期処理）
+[[queues.producers]]
+queue = "download-queue"
+binding = "DOWNLOAD_QUEUE"
+
+[[queues.consumers]]
+queue = "download-queue"
+max_batch_size = 1
+max_batch_timeout = 30
+
+# Cron設定（毎日00:00 UTCに自動削除処理を実行）
+[triggers]
+crons = ["0 0 * * *"]
+
 # Environment Variables
 [vars]
 ENVIRONMENT = "development"
+# TODO: 以下の値を実際の値に置き換えてください
+CLERK_PUBLISHABLE_KEY = "pk_test_Z3JlYXQtcG9ueS05My5jbGVyay5hY2NvdW50cy5kZXYk"  # Clerk開発環境のPublishable Key
+FRONTEND_URL = "http://localhost:3000"    # フロントエンドURL
+FROM_EMAIL = "noreply@example.com"        # 送信元メールアドレス
 
-# CORS設定
+# 本番環境設定
 [env.production]
 name = "weddingsnap-backend-production"
 
 [env.production.vars]
 ENVIRONMENT = "production"
+# TODO: 以下の値を実際の値に置き換えてください
+CLERK_PUBLISHABLE_KEY = "pk_test_Z3JlYXQtcG9ueS05My5jbGVyay5hY2NvdW50cy5kZXYk"  # Clerk本番環境のPublishable Key
+FRONTEND_URL = "https://yourdomain.com"   # 本番フロントエンドURL
+FROM_EMAIL = "noreply@yourdomain.com"     # 本番送信元メールアドレス
