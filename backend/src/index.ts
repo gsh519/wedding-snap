@@ -105,7 +105,6 @@ router.get('/api/auth/me', async (request, env: Env) => {
     if (!user) {
       return json(
         {
-          hasAccount: false,
           user: null,
           album: null,
         },
@@ -124,7 +123,6 @@ router.get('/api/auth/me', async (request, env: Env) => {
 
     return json(
       {
-        hasAccount: true,
         user: {
           id: user.id,
           email: user.email,
@@ -294,10 +292,21 @@ router.post('/api/auth/signup', async (request, env: Env) => {
 
     return json(
       {
-        success: true,
-        albumId,
-        slug,
-        message: 'アルバムが作成されました',
+        user: {
+          id: userId,
+          email: email,
+          displayName: displayName,
+        },
+        album: {
+          id: albumId,
+          slug: slug,
+          albumName: body.albumName,
+          eventDate: body.eventDate,
+          planType: PLAN_TYPES.FREE,
+          storageUsed: 0,
+          storageLimit: STORAGE_LIMITS.FREE_PLAN,
+          expireAt: expireAt.toISOString(),
+        },
       },
       { status: 201, headers: corsHeaders }
     )

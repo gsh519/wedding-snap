@@ -51,13 +51,7 @@ export default function SignupPage() {
               return
             }
 
-            // アカウントはあるがアルバムがない場合は/signup/weddingにリダイレクト
-            if (data.hasAccount) {
-              router.push('/signup/wedding')
-              return
-            }
-
-            // アカウントもない場合は/signup/weddingで新規登録
+            // アルバムがない場合は/signup/weddingで新規登録
             router.push('/signup/wedding')
           } else {
             // その他のエラーの場合もチェック完了として通常フローへ

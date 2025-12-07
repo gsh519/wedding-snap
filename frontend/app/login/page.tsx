@@ -51,14 +51,8 @@ export default function LoginPage() {
               return
             }
 
-            // アカウントはあるがアルバムがない場合は/signup/weddingにリダイレクト
-            if (data.hasAccount) {
-              router.push('/signup/wedding')
-              return
-            }
-
-            // アカウントがない場合は/signupで新規登録
-            router.push('/signup')
+            // アルバムがない場合は/signup/weddingで新規登録
+            router.push('/signup/wedding')
           } else {
             // その他のエラーの場合もチェック完了として通常フローへ
             console.error('API error:', response.status)

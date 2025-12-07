@@ -105,20 +105,14 @@ export default function EventInfoPage() {
         return
       }
 
-      // 成功したら、ユーザーデータを再取得してstoreに保存
-      const meResponse = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/auth/me`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      // signup のレスポンスを直接 store に保存（localStorage に自動保存される）
+      setUserData({
+        user: data.user,
+        album: data.album,
       })
 
-      if (meResponse.ok) {
-        const userData = await meResponse.json()
-        setUserData(userData)
-      }
-
       // 成功したら/wedding/:slugへリダイレクト
-      router.push(`/wedding/${data.slug}`)
+      router.push(`/wedding/${data.album.slug}`)
     } catch (err) {
       console.error('Error creating album:', err)
       setError('アカウントの作成に失敗しました。時間をあけて再度お試しください。')

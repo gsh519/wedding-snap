@@ -1,8 +1,7 @@
 'use client'
 
-import { useClerk } from '@clerk/nextjs'
-import { useRouter } from 'next/navigation'
 import TabBar from '@/components/TabBar'
+import { LogoutButton } from '@/components/LogoutButton'
 import { useUserStore } from '@/store/userStore'
 
 // 日付フォーマット関数（ISO形式 -> YYYY/M/D形式）
@@ -14,17 +13,9 @@ const formatDate = (isoDate: string | null | undefined): string => {
 }
 
 export default function SettingPage() {
-  const { signOut } = useClerk()
-  const router = useRouter()
-
   // storeからユーザー情報とアルバム情報を取得
   const { user, album } = useUserStore()
   const slug = album?.slug || ''
-
-  const handleLogout = async () => {
-    await signOut()
-    router.push('/')
-  }
 
   return (
     <div className="min-h-screen bg-background-primary pb-20">
@@ -159,12 +150,7 @@ export default function SettingPage() {
         {/* アカウント情報 */}
         <div className="bg-background-card rounded-2xl shadow-sm border border-brand-accent/20 p-6">
           <h3 className="text-sm font-semibold text-text-primary mb-3">アカウント</h3>
-          <button
-            onClick={handleLogout}
-            className="w-full bg-gray-500 text-white font-semibold py-3 px-6 rounded-full hover:bg-gray-600 transition"
-          >
-            ログアウト
-          </button>
+          <LogoutButton />
         </div>
       </main>
 
