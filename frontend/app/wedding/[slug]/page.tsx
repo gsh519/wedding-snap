@@ -76,7 +76,7 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
         if (!token) return
 
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/albums/${slug}/download/status`,
+          `${process.env.NEXT_PUBLIC_API_URL}/api/albums/${slug}/download/jobs/latest`,
           {
             headers: { Authorization: `Bearer ${token}` },
           }
@@ -98,7 +98,7 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
             totalFiles: job.totalFiles || 0,
           })
           setNotification({
-            message: 'ZIPファイルが完成しました！メールをご確認ください。',
+            message: 'ZIPファイルの準備が完了しました',
             type: 'success',
             isVisible: true,
           })
@@ -110,7 +110,7 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
           })
         } else if (job.jobStatus === JobStatus.FAILED) {
           setNotification({
-            message: 'ZIP生成に失敗しました。もう一度お試しください。',
+            message: 'ZIP生成に失敗しました。再度一括ダウンロードをお試しください。',
             type: 'error',
             isVisible: true,
           })
@@ -122,7 +122,7 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
     }
 
     checkJobStatus()
-  }, [slug, isOwner, getToken])
+  }, [])
 
   // Masonryのブレークポイント設定
   const breakpointColumns = {
@@ -361,6 +361,59 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
     }
   }
 
+  // ZIPダウンロード処理
+  const handleZipDownload = async (index: number) => {
+    if (!downloadJob) return
+
+    try {
+      const token = await getToken()
+      if (!token) {
+        setNotification({
+          message: '認証が必要です',
+          type: 'error',
+          isVisible: true,
+        })
+        return
+      }
+
+      // ZIP配信APIを呼び出し（認証ヘッダー付き）
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/download/${downloadJob.secretToken}?index=${index}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      )
+
+      if (!response.ok) {
+        throw new Error('ダウンロードに失敗しました')
+      }
+
+      // Blobをダウンロードさせる
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `wedding-photos-${index + 1}.zip`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+
+      // ダウンロード完了後、downloadJobをnullにして通知とボタンを消す
+      setDownloadJob(null)
+      setNotification({ ...notification, isVisible: false })
+    } catch (error) {
+      console.error('Download error:', error)
+      setNotification({
+        message: 'ダウンロードに失敗しました',
+        type: 'error',
+        isVisible: true,
+      })
+    }
+  }
+
   return (
     <div className="min-h-screen bg-background-primary pb-20">
       {/* ヘッダー */}
@@ -437,16 +490,15 @@ export default function GalleryPage({ params }: { params: Promise<{ slug: string
               </p>
             </div>
             {Array.from({ length: downloadJob.zipCount }).map((_, index) => (
-              <a
+              <button
                 key={index}
-                href={`${process.env.NEXT_PUBLIC_API_URL}/download/${downloadJob.secretToken}?index=${index}`}
-                download
+                onClick={() => handleZipDownload(index)}
                 className="w-full bg-gradient-to-r from-brand-primary to-brand-accent text-white font-semibold py-3 px-6 rounded-full hover:opacity-90 transition text-center"
               >
                 {downloadJob.zipCount > 1
                   ? `ZIP (${index + 1}/${downloadJob.zipCount}) をダウンロード`
                   : 'ZIPをダウンロード'}
-              </a>
+              </button>
             ))}
             <p className="text-xs text-gray-500 text-center">
               ダウンロードリンクは7日間有効です

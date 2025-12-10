@@ -55,6 +55,7 @@ export const downloadJobs = sqliteTable('download_jobs', {
   retryCount: integer('retry_count').notNull().default(0),
   createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   completedAt: text('completed_at'),
+  downloadedAt: text('downloaded_at'), // 初回ダウンロード日時
   // 一括ダウンロード機能用の追加フィールド
   totalFiles: integer('total_files'), // 総ファイル数
   zipCount: integer('zip_count').default(1), // 分割ZIP数（500枚ごと）

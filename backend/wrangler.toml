@@ -34,7 +34,7 @@ ENVIRONMENT = "development"
 # TODO: 以下の値を実際の値に置き換えてください
 CLERK_PUBLISHABLE_KEY = "pk_test_Z3JlYXQtcG9ueS05My5jbGVyay5hY2NvdW50cy5kZXYk"  # Clerk開発環境のPublishable Key
 FRONTEND_URL = "http://localhost:3000"    # フロントエンドURL
-FROM_EMAIL = "noreply@example.com"        # 送信元メールアドレス
+FROM_EMAIL = "gsh05196yu@yahoo.co.jp"        # 送信元メールアドレス
 
 # 本番環境設定
 [env.production]

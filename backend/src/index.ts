@@ -12,7 +12,7 @@ import {
 import { generateSlug } from './utils/slug'
 import { verifyToken, createClerkClient } from '@clerk/backend'
 import { STORAGE_LIMITS, ALBUM_EXPIRATION_DAYS, PLAN_TYPES } from './utils/config'
-import { zip } from 'fflate'
+import { zipSync } from 'fflate'
 
 // 型定義
 export interface Env {
@@ -645,14 +645,6 @@ router.post('/api/albums/:slug/download/request', async (request, env: Env) => {
 
     const jobId = jobResult[0].id
 
-    // downloadCountをインクリメント（無料プランのみ）
-    if (album.planType === PlanType.FREE) {
-      await db
-        .update(albums)
-        .set({ downloadCount: album.downloadCount + 1 })
-        .where(eq(albums.id, album.id))
-    }
-
     // Cloudflare Queueにエンキュー
     await env.DOWNLOAD_QUEUE.send({
       jobId,
@@ -739,12 +731,17 @@ router.get('/api/albums/:slug/download/jobs/latest', async (request, env: Env) =
       )
     }
 
-    // 最新のdownload_jobを取得
+    // 最新のdownload_jobを取得（downloaded_at IS NULL のもののみ）
     const jobResult = await db
       .select()
       .from(downloadJobs)
-      .where(eq(downloadJobs.albumId, album.id))
-      .orderBy(downloadJobs.createdAt)
+      .where(
+        and(
+          eq(downloadJobs.albumId, album.id),
+          isNull(downloadJobs.downloadedAt)
+        )
+      )
+      .orderBy(desc(downloadJobs.createdAt))
       .limit(1)
 
     const job = jobResult[0]
@@ -757,19 +754,11 @@ router.get('/api/albums/:slug/download/jobs/latest', async (request, env: Env) =
       )
     }
 
-    // JobStatusを文字列に変換
-    const statusMap: Record<number, string> = {
-      [JobStatus.PENDING]: 'PENDING',
-      [JobStatus.PROCESSING]: 'PROCESSING',
-      [JobStatus.COMPLETED]: 'COMPLETED',
-      [JobStatus.FAILED]: 'FAILED',
-    }
-
     return json(
       {
         job: {
           jobId: job.id,
-          jobStatus: statusMap[job.jobStatus] || 'UNKNOWN',
+          jobStatus: job.jobStatus,
           createdAt: job.createdAt,
           completedAt: job.completedAt,
           totalFiles: job.totalFiles,
@@ -788,13 +777,37 @@ router.get('/api/albums/:slug/download/jobs/latest', async (request, env: Env) =
   }
 })
 
-// ZIP配信API（認証不要・secretTokenで認証）
+// ZIP配信API（認証必須）
 router.get('/api/download/:token', async (request, env: Env) => {
   const { token } = request.params
 
   try {
     const db = getDb(env.DB)
     const url = new URL(request.url)
+
+    // Authorization headerからJWTトークンを取得
+    const authHeader = request.headers.get('Authorization')
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response('認証情報が必要です', { status: 401, headers: corsHeaders })
+    }
+
+    const authToken = authHeader.substring(7)
+
+    // Clerk JWTトークンを検証
+    let clerkUser
+    try {
+      clerkUser = await verifyToken(authToken, {
+        secretKey: env.CLERK_SECRET_KEY,
+      })
+    } catch (e: any) {
+      console.error('JWT verification failed:', e)
+      return new Response('認証に失敗しました', { status: 401, headers: corsHeaders })
+    }
+
+    const userId = clerkUser.sub as string
+    if (!userId) {
+      return new Response('ユーザー情報の取得に失敗しました', { status: 400, headers: corsHeaders })
+    }
 
     // secretTokenでdownload_jobを取得
     const jobResult = await db
@@ -806,6 +819,11 @@ router.get('/api/download/:token', async (request, env: Env) => {
     const job = jobResult[0]
     if (!job) {
       return new Response('ダウンロードリンクが無効です', { status: 404, headers: corsHeaders })
+    }
+
+    // アルバム所有者確認
+    if (job.userId !== userId) {
+      return new Response('このダウンロードへのアクセス権限がありません', { status: 403, headers: corsHeaders })
     }
 
     // ジョブステータス確認
@@ -821,6 +839,33 @@ router.get('/api/download/:token', async (request, env: Env) => {
 
       if (now > expiryDate) {
         return new Response('ダウンロード期限が切れています（7日経過）', { status: 410, headers: corsHeaders })
+      }
+    }
+
+    // downloaded_at が NULL の場合のみ、downloadCount を更新
+    if (!job.downloadedAt) {
+      // アルバム情報を取得
+      const albumResult = await db
+        .select()
+        .from(albums)
+        .where(eq(albums.id, job.albumId))
+        .limit(1)
+
+      const album = albumResult[0]
+      if (album) {
+        // 無料プランの場合のみ downloadCount をインクリメント
+        if (album.planType === PlanType.FREE) {
+          await db
+            .update(albums)
+            .set({ downloadCount: album.downloadCount + 1 })
+            .where(eq(albums.id, album.id))
+        }
+
+        // downloaded_at を記録
+        await db
+          .update(downloadJobs)
+          .set({ downloadedAt: new Date().toISOString() })
+          .where(eq(downloadJobs.id, job.id))
       }
     }
 
@@ -1011,12 +1056,7 @@ async function createZipFile(
   }
 
   // ZIP圧縮を実行
-  const zipBuffer = await new Promise<Uint8Array>((resolve, reject) => {
-    zip(files, { level: 6 }, (err, data) => {
-      if (err) reject(err)
-      else resolve(data)
-    })
-  })
+  const zipBuffer = zipSync(files, { level: 6 })
 
   // R2にZIPファイルをアップロード
   await env.BUCKET.put(zipKey, zipBuffer, {
@@ -1089,54 +1129,6 @@ async function processDownloadJob(jobId: number, albumId: string, env: Env): Pro
       })
       .where(eq(downloadJobs.id, jobId))
 
-    // 6. メール送信
-    try {
-      // 完了したジョブ情報を取得
-      const completedJob = await db
-        .select()
-        .from(downloadJobs)
-        .where(eq(downloadJobs.id, jobId))
-        .limit(1)
-
-      if (completedJob.length > 0) {
-        const job = completedJob[0]
-
-        // アルバム情報を取得
-        const albumResult = await db
-          .select()
-          .from(albums)
-          .where(eq(albums.id, albumId))
-          .limit(1)
-
-        // ユーザー情報を取得
-        const userResult = await db
-          .select()
-          .from(users)
-          .where(eq(users.id, job.userId))
-          .limit(1)
-
-        if (albumResult.length > 0 && userResult.length > 0) {
-          const album = albumResult[0]
-          const user = userResult[0]
-
-          await sendDownloadReadyEmail(
-            {
-              id: job.id,
-              secretToken: job.secretToken,
-              zipCount: job.zipCount || 1,
-              totalFiles: job.totalFiles || 0,
-            },
-            user.email,
-            album.albumName,
-            env
-          )
-        }
-      }
-    } catch (emailError) {
-      console.error('Failed to send email, but job completed successfully:', emailError)
-      // メール送信失敗してもジョブは成功
-    }
-
     console.log(`Job ${jobId} completed successfully. Generated ${batches.length} ZIP(s) with ${mediaList.length} files.`)
   } catch (e) {
     console.error(`Job ${jobId} failed:`, e)
@@ -1177,147 +1169,6 @@ async function processDownloadJob(jobId: number, albumId: string, env: Env): Pro
     }
 
     throw e
-  }
-}
-
-// ========================================
-// メール送信ヘルパー関数
-// ========================================
-
-/**
- * ダウンロード準備完了メールを送信
- * @param job - ダウンロードジョブ
- * @param userEmail - 送信先メールアドレス
- * @param albumName - アルバム名
- * @param env - 環境変数
- */
-async function sendDownloadReadyEmail(
-  job: { id: number; secretToken: string; zipCount: number; totalFiles: number },
-  userEmail: string,
-  albumName: string,
-  env: Env
-): Promise<void> {
-  try {
-    // ダウンロードリンクを生成
-    const downloadLinks: string[] = []
-    for (let i = 0; i < job.zipCount; i++) {
-      downloadLinks.push(`${env.FRONTEND_URL}/download/${job.secretToken}?index=${i}`)
-    }
-
-    // メール本文（HTML）
-    const htmlBody = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>写真のダウンロード準備が完了しました</title>
-</head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f9fafb;">
-  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-    <!-- ヘッダー -->
-    <div style="background: linear-gradient(135deg, #FF6B9D 0%, #FFA06B 100%); border-radius: 16px; padding: 32px; text-align: center; margin-bottom: 24px;">
-      <h1 style="margin: 0; color: white; font-size: 24px; font-weight: bold;">📸 WeddingSnap</h1>
-    </div>
-
-    <!-- メインコンテンツ -->
-    <div style="background-color: white; border-radius: 16px; padding: 32px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);">
-      <h2 style="margin: 0 0 16px 0; color: #1f2937; font-size: 20px; font-weight: bold;">写真のダウンロード準備が完了しました 🎉</h2>
-
-      <p style="margin: 0 0 24px 0; color: #4b5563; line-height: 1.6;">
-        こんにちは！<br>
-        「<strong>${albumName}</strong>」の写真（全${job.totalFiles}枚）のZIPファイル生成が完了しました。
-      </p>
-
-      <!-- ダウンロードリンク -->
-      <div style="background-color: #f3f4f6; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
-        <h3 style="margin: 0 0 12px 0; color: #1f2937; font-size: 16px; font-weight: 600;">📦 ダウンロードリンク</h3>
-        ${downloadLinks.map((link, index) => `
-          <div style="margin-bottom: 12px;">
-            <a href="${link}" style="display: inline-block; background: linear-gradient(135deg, #FF6B9D 0%, #FFA06B 100%); color: white; text-decoration: none; padding: 12px 24px; border-radius: 24px; font-weight: 600; font-size: 14px;">
-              📥 ZIP ${downloadLinks.length > 1 ? `(${index + 1}/${downloadLinks.length})` : ''} をダウンロード
-            </a>
-          </div>
-        `).join('')}
-      </div>
-
-      <!-- 重要な注意事項 -->
-      <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 8px; margin-bottom: 24px;">
-        <h4 style="margin: 0 0 8px 0; color: #92400e; font-size: 14px; font-weight: 600;">⚠️ 重要</h4>
-        <ul style="margin: 0; padding-left: 20px; color: #78350f; font-size: 14px; line-height: 1.6;">
-          <li>ダウンロードリンクは<strong>7日間のみ有効</strong>です</li>
-          <li>期限を過ぎるとファイルは自動的に削除されます</li>
-          <li>お早めにダウンロードをお願いします</li>
-        </ul>
-      </div>
-
-      <!-- 補足情報 -->
-      <div style="color: #6b7280; font-size: 13px; line-height: 1.6;">
-        <p style="margin: 0 0 8px 0;">📸 写真が多い場合、ファイルサイズの都合で複数のZIPに分割されています</p>
-        <p style="margin: 0;">🔒 このリンクは秘密のURLです。他の人と共有しないようご注意ください</p>
-      </div>
-    </div>
-
-    <!-- フッター -->
-    <div style="text-align: center; padding: 24px; color: #9ca3af; font-size: 12px;">
-      <p style="margin: 0;">© 2024 WeddingSnap. All rights reserved.</p>
-      <p style="margin: 8px 0 0 0;">このメールは自動送信されています。返信はできません。</p>
-    </div>
-  </div>
-</body>
-</html>
-    `.trim()
-
-    // テキスト版（HTMLをサポートしないメールクライアント用）
-    const textBody = `
-【WeddingSnap】写真のダウンロード準備が完了しました
-
-こんにちは！
-
-「${albumName}」の写真（全${job.totalFiles}枚）のZIPファイル生成が完了しました。
-
-■ ダウンロードリンク
-${downloadLinks.map((link, index) => `ZIP ${downloadLinks.length > 1 ? `(${index + 1}/${downloadLinks.length})` : ''}: ${link}`).join('\n')}
-
-⚠️ 重要な注意事項
-- ダウンロードリンクは7日間のみ有効です
-- 期限を過ぎるとファイルは自動的に削除されます
-- お早めにダウンロードをお願いします
-
-📸 写真が多い場合、ファイルサイズの都合で複数のZIPに分割されています
-🔒 このリンクは秘密のURLです。他の人と共有しないようご注意ください
-
-© 2024 WeddingSnap. All rights reserved.
-このメールは自動送信されています。返信はできません。
-    `.trim()
-
-    // Resend API呼び出し
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: env.FROM_EMAIL,
-        to: [userEmail],
-        subject: '【WeddingSnap】写真のダウンロード準備が完了しました',
-        html: htmlBody,
-        text: textBody,
-      }),
-    })
-
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error('Failed to send email via Resend:', response.status, errorText)
-      throw new Error(`Resend API error: ${response.status}`)
-    }
-
-    const result = await response.json() as { id: string }
-    console.log(`Email sent successfully to ${userEmail}. Resend ID: ${result.id}`)
-  } catch (error) {
-    console.error('Error sending email:', error)
-    // メール送信失敗してもジョブは成功扱いにする（ユーザーは別の方法でダウンロードできるため）
   }
 }
 
